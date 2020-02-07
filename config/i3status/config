@@ -1,0 +1,44 @@
+general {
+        colors = true
+        interval = 1
+        color_good = "#2AA198"
+        color_bad = "#586E75"
+        color_degraded = "#DC322F"
+}
+
+order += "cpu_usage"
+order += "memory"
+order += "tztime local"
+order += "battery all"
+
+cpu_usage {
+        format = "  %usage "
+}
+memory {
+        format = " %used"
+        threshold_degraded = "1G"
+        format_degraded = "MEMORY < %available"
+}
+## 日期改成自己喜欢的格式
+tztime local {
+        # format = "%Y-%m-%d %H:%M:%S"
+        format = " %m-%d %H:%M:%S "
+}
+battery all {
+        # format = "%status %percentage %remaining %emptytime"
+        format = " %status %percentage"
+        format_down = "No battery"
+        last_full_capacity = true
+        integer_battery_capacity = true
+        # status_chr = ""
+        status_chr = "⚡"
+        # status_bat = "bat"
+        # status_bat = "☉"
+        status_bat = ""
+        # status_unk = "?"
+        status_unk = ""
+        # status_full = ""
+        status_full = "☻"
+        low_threshold = 15
+        threshold_type = time
+}
