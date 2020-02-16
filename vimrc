@@ -53,8 +53,10 @@ Plug 'tpope/vim-commentary'
 " Extension to ctrlp, for fuzzy command finder
 Plug 'fisadev/vim-ctrlp-cmdpalette'
 
-" Class/module browser
-Plug 'majutsushi/tagbar'
+" Vim-airline
+Plug 'vim-airline/vim-airline'
+
+
 
 call plug#end()
 
@@ -115,12 +117,13 @@ let g:ctrlp_mruf_default_order = 1
 "
 " Statusline -------------------------------------------------------------
 "
-set laststatus=2
-set statusline=(Vide)\ \ %<%f
-set statusline+=%w%h%m%r
-set statusline+=\ %{getcwd()}
-set statusline+=\ [%{&ff}:%{&fenc}:%Y]
-set statusline+=%=%-14.(%l,%c%V%)\ %p%%
+"
+" set laststatus=2
+" set statusline=%{mode()}\ \ %<%f
+" set statusline+=%w%h%m%r
+" set statusline+=\ %{getcwd()}
+" set statusline+=\ [%{&ff}:%{&fenc}:%Y]
+" set statusline+=%=%-14.(%l,%c%V%)\ %p%%
 
 "
 " Color scheme -----------------------------------------------------------
@@ -151,8 +154,17 @@ set hidden hlsearch
 set number
 set shell=/bin/bash
 set t_co=256        " Make vim better in putty
+hi Normal ctermfg=252 ctermbg=none
+
+if !has('gui_running')
+  set t_Co=256
+endif
+
 set textwidth=0
 syntax on
+
+" set timeoutlen
+set timeoutlen=50
 
 " ================================================================================
 " Custom Setting
@@ -167,6 +179,8 @@ inoremap <C-k> <Up>
 " delete in move mode
 inoremap <C-d><C-l> <esc>ddo
 inoremap <C-d><C-x> <esc>xa
-
+inoremap <C-o> <esc>o
 " Toggle NERDTree display
 map <C-t> :NERDTreeToggle<CR>
+
+
