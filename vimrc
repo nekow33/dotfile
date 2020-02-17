@@ -31,9 +31,6 @@ endif
 call plug#begin('~/.vim/plugged')
 
 " Plugins from github repos
-"
-" Code and files fuzzy finder
-Plug 'ctrlpvim/ctrlp.vim'
 
 " Better file browser
 Plug 'scrooloose/nerdtree'
@@ -41,20 +38,14 @@ Plug 'scrooloose/nerdtree'
 " line up text
 Plug 'godlygeek/tabular'
 
-" Surround
-Plug 'tpope/vim-surround'
-
 " Auto close character
 Plug 'Townk/vim-autoclose'
 
-" Code comment
-Plug 'tpope/vim-commentary'
-
-" Extension to ctrlp, for fuzzy command finder
-Plug 'fisadev/vim-ctrlp-cmdpalette'
-
 " Vim-airline
 Plug 'vim-airline/vim-airline'
+
+" Markdown
+Plug 'iamcco/markdown-preview.nvim', { 'do': { -> mkdp#util#install_sync() }, 'for': ['markdown','vim-plug'] }
 
 
 
@@ -97,6 +88,12 @@ let g:NERDTreeIndicatorMapCustom = {
             \ "Clean"     : "✔︎",
             \ "Unknown"   : "?"
             \ }
+
+"
+" Markdown Preview------------------------------------
+" 
+let g:mkdp_auto_close = 1
+
 
 "
 " ctrlp -------------------------------------------------------------------
@@ -182,5 +179,67 @@ inoremap <C-d><C-x> <esc>xa
 inoremap <C-o> <esc>o
 " Toggle NERDTree display
 map <C-t> :NERDTreeToggle<CR>
+
+" Run file
+com! -nargs=* Run call RunFile()
+func! RunFile()
+  exec "w"
+  if &filetype == 'c'
+    exec "!gcc % -o %< && ./%<"
+  elseif &filetype == 'cpp'
+    exec "!g++ % -o %< && ./%<"
+  elseif &filetype == 'java'
+    exec "!javac %"
+  elseif &filetype == 'sh'
+    :!bash %
+  elseif &filetype == 'python'
+    silent! exec "!clear"
+    exec "!python3 %"
+  elseif &filetype == 'html'
+    exec "!firefox % &"
+  elseif &filetype == 'markdown'
+    exec "MarkdownPreview"
+  elseif &filetype == 'vimwiki'
+    exec "MarkdownPreview"
+  endif
+  exec "redraw!"
+endfunc
+
+com! -nargs=* Run call TRunFile()
+func! TRunFile()
+  exec "w"
+  if &filetype == 'c'
+    exec "!gcc % -o %< && time ./%<"
+  elseif &filetype == 'cpp'
+    exec "!g++ % -o %< && time ./%<"
+  elseif &filetype == 'java'
+    exec "!javac % && time java %<"
+  elseif &filetype == 'sh'
+    :!time bash %
+  elseif &filetype == 'python'
+    silent! exec "!clear"
+    exec "!time python3 %"
+  elseif &filetype == 'html'
+    exec "!firefox % &"
+  elseif &filetype == 'markdown'
+    exec "MarkdownPreview"
+  elseif &filetype == 'vimwiki'
+    exec "MarkdownPreview"
+  endif
+  exec "redraw!"
+endfunc
+
+com! -nargs=* Compile call CompileFile()
+func! CompileFile()
+  exec "w"
+  if &filetype == 'c'
+    silent exec "!gcc % -o %<"
+  elseif &filetype == 'cpp'
+    silent exec "!g++ % -o %<"
+  elseif &filetype == 'java'
+    silent exec "!javac % &&"
+  endif
+  exec "redraw!"
+endfunc
 
 
