@@ -12,11 +12,11 @@ if has('win32')
     if !filereadable(vim_plug_path)
         echo "Installing Vim-Plug ..."
         echo ""
-	if executable('curl')
+    if executable('curl')
                 execute '!curl -fLo ' . expand(vim_plug_path) . ' --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim'
                 echo "Done"
-	endif
-	let vim_plug_installed=1
+    endif
+    let vim_plug_installed=1
     endif
 endif
 
@@ -71,16 +71,40 @@ set smarttab
 
 " ====
 " statusline setting
+
+function! GetMode()
+    let m = mode()
+    if m=='n'
+        return "NORMAL"
+    elseif m=='i'
+        return 'INSERT'
+    elseif m == 'v'
+        return "VISUAL"
+    elseif m == 'V'
+        return "LINE VISUAL"
+    endif
+    return m
+endfunc
+
 set laststatus=2
-set statusline=%{mode()}\ \ %<%f
+set statusline=\ \ %<%f
 set statusline+=%w%h%m%r
 set statusline+=\ %{getcwd()}
 set statusline+=\ [%{&ff}:%{&fenc}:%Y]
-set statusline+=%=%-14.(%l,%c%V%)\ %p%%
+set statusline+=%=%-14.(%{GetMode()}\ %l,%c\ \ \ \ %)\ %p%%\ 
+
+" ====
+" set list
+set ambiwidth=double
+set listchars+=tab:<->,eol: 
+set list
+
 
 " ====
 " set gvim window size
-set lines=46 columns=120
+if has('win32')
+    set lines=46 columns=120
+endif
 
 " ====
 " scroll setting
@@ -107,7 +131,6 @@ set encoding=utf-8 fileencodings=utf-8,ucs-bom,cp936 fileencoding=utf-8
 
 " ====
 " other setting
-set ambiwidth=double
 source $VIMRUNTIME/delmenu.vim "garbled
 source $VIMRUNTIME/menu.vim "garbled
 set visualbell t_vb=  "close visual bell
@@ -158,22 +181,6 @@ endfunc
 
 " ====
 " out of bracket
-inoremap <C-e> <Esc>:call OutOfBracket()<CR>a
-
-function! OutOfBracket()
-    let current_line=getline('.') 
-    let tarpos=col('.')
-    let curpos=col('.')
-
-    while curpos<len(current_line)
-        let c=current_line[curpos]
-        if c == '}' || c == ')' || c == ']' || c == '>' || c == "'" || c == '"'
-           break
-        endif
-        let curpos=curpos+1
-    endwhile 
-    call setpos('.', [1, line('.'), curpos+1, 0])
-endfunction
 
 " 定义跳出括号函数，用于跳出括号
 func SkipPair()
@@ -185,4 +192,5 @@ func SkipPair()
 endfunc
 " 将tab键绑定为跳出括号
 inoremap <TAB> <c-r>=SkipPair()<CR>
+
 
