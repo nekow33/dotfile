@@ -5,6 +5,7 @@
 " ====
 " Vim-Plug auto install
 
+
 let vim_plug_installed=0
 if has('win32')
     let vim_plug_path=expand('$HOME/vimfiles/autoload/plug.vim')
@@ -40,12 +41,23 @@ endif
 " vim plug
 call plug#begin(vim_plug_home)
 
+Plug 'neoclide/coc.nvim', {'branch': 'release'}
+
 " auto-pair
-Plug 'jiangmiao/auto-pairs'
+Plug 'scrooloose/nerdtree'
+
+Plug 'Raimondi/delimitMate'
 
 Plug 'mhinz/vim-startify'
 
 call plug#end()
+
+" ====
+" NerdTree
+nnoremap dt :NERDTreeToggle<CR>
+nnoremap bn :bNext<CR>
+autocmd BufEnter * if 0 == len(filter(range(1, winnr('$')), 'empty(getbufvar(winbufnr(v:val), "&bt"))')) | qa! | endif      " 自动退出NERDTree窗口
+
 
 " ====
 " compatible
@@ -56,9 +68,13 @@ set backspace=indent,eol,start
 " general setting
 set nu
 set cursorline
+set signcolumn=yes
+highlight! link SignColumn LineNr
 set showmatch
+set mouse=a
 set wildmenu
 set ffs=unix,dos,mac
+nnoremap q <NOP>
 
 " ====
 " indent setting
@@ -68,6 +84,12 @@ set tabstop=4
 set expandtab
 set autoindent
 set smarttab
+
+" ====
+" fold 
+set foldmethod=indent
+set foldlevel=99
+
 
 " ====
 " statusline setting
@@ -96,7 +118,7 @@ set statusline+=%=%-14.(%{GetMode()}\ %l,%c\ \ \ \ %)\ %p%%\
 " ====
 " set list
 set ambiwidth=double
-set list
+set listchars+=tab:<->,eol: 
 set listchars=
 set listchars+=tab:>-
 if strlen(substitute(strtrans(nr2char(160)), ".", "x", "g")) == 1
@@ -104,6 +126,8 @@ if strlen(substitute(strtrans(nr2char(160)), ".", "x", "g")) == 1
 else
     execute "set listchars+=eol:" . nr2char(32)
 endif
+
+
 
 " ====
 " set gvim window size
@@ -127,8 +151,10 @@ syntax enable
 
 " ====
 " highlight search
+nnoremap df /
 set hlsearch
 set incsearch
+nnoremap q :noh<CR>
 
 " ====
 " encoding setting
@@ -152,6 +178,7 @@ nnoremap <C-e> $
 nnoremap <Space> <Nop>
 let mapleader="\<Space>"
 nnoremap <leader>w :w<CR>
+nnoremap <leader>q :q
 
 
 " ====
