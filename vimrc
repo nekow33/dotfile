@@ -96,9 +96,14 @@ set statusline+=%=%-14.(%{GetMode()}\ %l,%c\ \ \ \ %)\ %p%%\
 " ====
 " set list
 set ambiwidth=double
-set listchars+=tab:<->,eol: 
 set list
-
+set listchars=
+set listchars+=tab:>-
+if strlen(subtitute(strtrans(nr2char(160)), ".", "x", "g")) == 1
+    execute "set listchars+=eol:" . nr2char(160)
+else
+    execute "set listchars+=eol:" . nr2char(32)
+endif
 
 " ====
 " set gvim window size
