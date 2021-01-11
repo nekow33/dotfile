@@ -99,7 +99,7 @@ set ambiwidth=double
 set list
 set listchars=
 set listchars+=tab:>-
-if strlen(subtitute(strtrans(nr2char(160)), ".", "x", "g")) == 1
+if strlen(substitute(strtrans(nr2char(160)), ".", "x", "g")) == 1
     execute "set listchars+=eol:" . nr2char(160)
 else
     execute "set listchars+=eol:" . nr2char(32)
