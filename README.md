@@ -1,2 +1,9 @@
 # dotfile
-我的配置文件
+
+My Dot Files
+
+#### Vim
+
+```sh
+wget https://raw.githubusercontent.com/hahaws/dotfile/master/.vimrc -O ~/.vimrc
+```
