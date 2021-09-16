@@ -237,6 +237,7 @@ function! DeleteMatchPair()
 endfunc
 
 inoremap <Bs> <C-r>=DeleteMatchPair()<CR>
+inoremap <C-H> <C-r>=DeleteMatchPair()<CR>
 
 
 
