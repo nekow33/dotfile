@@ -1,0 +1,33 @@
+" simple vimrc without plugin
+"
+
+set nu
+set cursorline
+set mouse=a
+set wildmenu
+set ffs=unix,mac,dos
+set ruler
+set rulerformat=%30(%F%=%y%m%r%w\ %l,%c\ %p%%%)
+set showcmd
+set incsearch
+set scrolloff=3
+set timeoutlen=200
+
+set expandtab
+set softtabstop=2
+set tabstop=2
+set shiftwidth=2
+set cindent
+
+filetype on
+filetype plugin on
+syntax enable
+
+autocmd InsertEnter * set nocursorline
+autocmd InsertLeave * set cursorline
+
+nnoremap <Space> <Nop>
+let mapleader="\<Space>"
+nnoremap <leader>w :w<CR>
+inoremap <C-c> <Esc>
+inoremap <C-d> <Del>
