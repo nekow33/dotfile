@@ -1,8 +1,7 @@
-" simple vimrc without plugin
-"
+" Simple vimrc without plugin
 
+set backspace=indent,eol,start
 set nu
-set cursorline
 set mouse=a
 set wildmenu
 set ffs=unix,mac,dos
@@ -12,22 +11,55 @@ set showcmd
 set incsearch
 set scrolloff=3
 set timeoutlen=200
+set nobackup
+set noswapfile
+set noundofile
+set ignorecase
+set smartcase
+autocmd InsertEnter * set nocursorline
+autocmd InsertLeave * set cursorline
+
+if has('win32')
+  set lines=36 columns=80
+endif
 
 set expandtab
 set softtabstop=2
 set tabstop=2
 set shiftwidth=2
 set cindent
-
-filetype on
-filetype plugin on
+syntax on
+filetype indent on
 syntax enable
+set clipboard=unnamed,unnamedplus
 
-autocmd InsertEnter * set nocursorline
-autocmd InsertLeave * set cursorline
-
+inoremap <C-c> <Esc>
 nnoremap <Space> <Nop>
 let mapleader="\<Space>"
 nnoremap <leader>w :w<CR>
-inoremap <C-c> <Esc>
-inoremap <C-d> <Del>
+nnoremap <leader>q :bdelete<CR>
+nnoremap <leader>r :E<CR>
+nnoremap <leader>o :browse oldfiles<CR>
+
+let g:netrw_banner=0
+let g:netrw_liststyle=3
+let g:netrw_browse_split=4
+let g:netrw_altv=1
+autocmd filetype netrw nmap <buffer> c %
+
+inoremap { {}<Left>
+inoremap {<CR> {<CR>}<Esc>O
+inoremap {{ {
+inoremap {} {}
+
+nnoremap <F5> :call BuildRun()<CR>
+func! BuildRun()
+  exec "w"
+  if &filetype == 'c' || &filetype == 'cpp' || &filetype == 'cc'
+    exec "!g++ % -O2 -g -o %< && %<"
+    exec "redraw!"
+  else
+    echo "Not Support for " . &filetype . " file"
+  endif
+endfunc
+
