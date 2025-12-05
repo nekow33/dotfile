@@ -1,0 +1,12 @@
+
+theme = "dark_plus"
+
+[keys.insert]
+"C-c" = "normal_mode"
+
+[keys.normal]
+"C-c" = "no_op"
+
+[keys.select]
+"C-c" = ["collapse_selection", "normal_mode"]
+
