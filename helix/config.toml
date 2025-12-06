@@ -6,6 +6,7 @@ theme = "dark_plus"
 
 [keys.normal]
 "C-c" = "no_op"
+"C-/" = "toggle_comments"
 
 [keys.select]
 "C-c" = ["collapse_selection", "normal_mode"]
