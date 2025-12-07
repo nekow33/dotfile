@@ -5,9 +5,20 @@ theme = "dark_plus"
 "C-c" = "normal_mode"
 
 [keys.normal]
+"C-q" = ":quit"
 "C-c" = "no_op"
 "C-/" = "toggle_comments"
+"C-b" = { "C-n" = ":buffer-next", "C-p" = ":buffer-previous", "C-q" = ":buffer-close" }
+
+[keys.normal." "]
+"w" = ":write"
 
 [keys.select]
 "C-c" = ["collapse_selection", "normal_mode"]
 
+[editor]
+cursorline = true
+bufferline = "always"
+
+[editor.lsp]
+enable = true
