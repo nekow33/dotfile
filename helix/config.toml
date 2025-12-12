@@ -3,6 +3,10 @@ theme = "dark_plus"
 
 [keys.insert]
 "C-c" = "normal_mode"
+"C-h" = "move_char_left"
+"C-l" = "move_char_right"
+"C-j" = "move_line_down"
+"C-k" = "move_line_up"
 
 [keys.normal]
 "C-q" = ":quit"
@@ -22,3 +26,7 @@ bufferline = "always"
 
 [editor.lsp]
 enable = true
+
+# [editor.word-completion]
+# enable = true
+# trigger-length = 2
