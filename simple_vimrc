@@ -51,15 +51,3 @@ inoremap { {}<Left>
 inoremap {<CR> {<CR>}<Esc>O
 inoremap {{ {
 inoremap {} {}
-
-nnoremap <F5> :call BuildRun()<CR>
-func! BuildRun()
-  exec "w"
-  if &filetype == 'c' || &filetype == 'cpp' || &filetype == 'cc'
-    exec "!g++ % -O2 -g -o %< && %<"
-    exec "redraw!"
-  else
-    echo "Not Support for " . &filetype . " file"
-  endif
-endfunc
-
