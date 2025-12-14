@@ -27,6 +27,3 @@ bufferline = "always"
 [editor.lsp]
 enable = true
 
-# [editor.word-completion]
-# enable = true
-# trigger-length = 2
