@@ -11,43 +11,36 @@
 ;; ============================================
 
 ;; 设置配置目录
-(setq user-emacs-directory (expand-file-name "~/.emacs.d/"))
 
+(setq user-emacs-directory (expand-file-name "~/.emacs.d/"))
 ;; 完全禁用所有文件生成（不创建任何额外文件）
 (setq make-backup-files nil)
 (setq auto-save-default nil)
 (setq auto-save-list-file-prefix nil)
 (setq create-lockfiles nil)
-
 ;; 历史记录和自定义变量也强制放到用户目录
 (setq recentf-save-file (expand-file-name "recentf" user-emacs-directory))
 (setq custom-file (expand-file-name "custom.el" user-emacs-directory))
-
 ;; 降低垃圾回收阈值提升启动速度
 (setq gc-cons-threshold (* 50 1000 1000))
 (add-hook 'emacs-startup-hook
           (lambda () (setq gc-cons-threshold (* 2 1000 1000))))
-
 ;; 禁止启动画面
 (setq inhibit-startup-screen t)
 (setq initial-scratch-message nil)
 (tool-bar-mode -1)
 (menu-bar-mode -1)
 (scroll-bar-mode -1)
-
 ;; 窗口默认全屏
 (add-to-list 'initial-frame-alist '(fullscreen . maximized))
-
 ;; Windows 编码
 (set-language-environment "UTF-8")
 (set-default-coding-systems 'utf-8-unix)
 (prefer-coding-system 'utf-8-unix)
-
 ;; Windows Shell
 (when (eq system-type 'windows-nt)
   (setq explicit-shell-file-name "powershell.exe")
   (setq shell-file-name "powershell.exe"))
-
 
 ;; ============================================
 ;; 2. Bootstrap straight.el
@@ -83,7 +76,7 @@
   :config
   (setq doom-themes-enable-bold t
         doom-themes-enable-italic t)
-  (load-theme 'doom-one t)
+  (load-theme 'doom-tomorrow-night t)
   (doom-themes-visual-bell-config))
 
 (use-package nerd-icons
@@ -98,7 +91,7 @@
   (setq doom-modeline-height 25)
   (setq doom-modeline-icon t))
   
- ;; 行号与外观
+ ;; 行号与括号
 (global-display-line-numbers-mode t)
 (setq display-line-numbers-type 'relative)
 (global-hl-line-mode 1)
@@ -120,17 +113,22 @@
   
   ;; 2. 关键：让 nerd-icons 知道用哪个字体家族
   (setq nerd-icons-font-family "Maple Mono NF CN")
-  
-  (set-fontset-font t '(#xe000 . #xfdff)
-                  (font-spec :family "Maple Mono NF CN")
-                  nil 'prepend))
+
+  ;; 3. 设置图标
+  (set-fontset-font t 'unicode "Segoe UI Symbol" nil 'prepend)
+  (set-fontset-font t 'unicode "Symbola" nil 'append))
 
 
 ;; ============================================
 ;; 4. Buffer管理
 ;; ============================================
 ;; 1. 模糊搜索切换
-(use-package vertico :straight t :init (vertico-mode))
+(use-package vertico
+  :straight t
+  :init
+  (vertico-mode)
+  (vertico-mouse-mode))
+
 (use-package orderless :straight t :init (setq completion-styles '(orderless basic)))
 
 (use-package consult
@@ -139,16 +137,8 @@
   :config
   ;; 强制确保 consult 主文件已加载
   (require 'consult)
-  
-  ;; 安全设置：先检查变量是否存在
-  (if (boundp 'consult--source-hidden-buffer)
-      (setq consult-buffer-sources
-            '(consult--source-hidden-buffer
-              consult--source-buffer
-              consult--source-recent-file
-              consult--source-bookmark))
-    ;; 如果变量不存在（版本太旧），回退到不过滤所有 buffer
-    (setq consult-buffer-filter nil)))
+  :bind (
+         ("M-p" . consult-yank-pop)))
 
 
 ;; ============================================
@@ -224,7 +214,13 @@
     ;; 搜索
     "s"  '(:ignore t :which-key "search")
     "ss" '(consult-line :which-key "search line")
+    "sf" '(consult-focus-lines :which-key "focus line")
    
+    ;; 复制粘贴
+    "y"  '(:ignore t :which-key "yank")
+    "yp" '(consult-yank-pop :which-key "yank-pop")
+    "yr" '(consult-yank-replace :which-key "yank-replace")
+
     ;; 其他
     "SPC" '(execute-extended-command :which-key "M-x")   ;; SPC SPC 打开 M-x
     "qq"  '(save-buffers-kill-terminal :which-key "quit")
@@ -237,6 +233,15 @@
   :config
   (setq which-key-idle-delay 0.5))
 
+(use-package evim
+  :after evil
+  :demand t
+  :config
+  (evim-setup-global-keys))
+
+;; ============================================
+;; 6. Dirvish配置
+;; ============================================
 (use-package dirvish
   :straight t
   :demand t
@@ -263,8 +268,8 @@
   
   ;; ========== 预览设置 ==========
   ;; 支持的预览类型
-  (setq dirvish-preview-dispatchers
-        '(image gif video audio epub pdf archive))
+  ;; (setq dirvish-preview-dispatchers
+  ;;       '(image gif video audio epub pdf archive))
   
   ;; 子树展开样式（使用 nerd-icons）
   (setq dirvish-subtree-state-style 'nerd)
@@ -272,8 +277,7 @@
   ;; ========== 快速访问目录 ==========
   (setq dirvish-quick-access-entries
         '(("h" "~/"                          "Home")
-          ("d" "~/Downloads/"                "Downloads")
-          ("c" "~/Documents/Code/"           "Code")
+          ("c" "~/project/"                  "Project")
           ("e" "~/.emacs.d/"                 "Emacs")
           ("t" "~/.local/share/Trash/files/" "TrashCan")))
   
@@ -282,7 +286,8 @@
   (setq dirvish-large-directory-threshold 20000)
   ;; 重用 session（避免重复创建窗口）
   (setq dirvish-reuse-session t)
-  
+  (setq dirvish-preview-disabled-p t) 
+
   ;; ========== 其他优化 ==========
   ;; 删除时移动到回收站
   (setq delete-by-moving-to-trash t)
@@ -303,8 +308,6 @@
     
     ;; 子树展开/折叠（类似 treemacs 的展开体验）
     (kbd "TAB") 'dirvish-subtree-toggle
-    (kbd "zo") 'dirvish-subtree-toggle
-    (kbd "zc") 'dirvish-subtree-toggle
     
     ;; 标记操作
     (kbd "m") 'dired-mark
@@ -329,8 +332,7 @@
     
     ;; 预览相关
     (kbd "M-l") 'dirvish-layout-toggle   ;; 切换布局
-    (kbd "M-s") 'dirvish-setup-menu      ;; 设置菜单
-    (kbd "M-p") 'dirvish-preview-toggle) ;; 开关预览
+    (kbd "M-s") 'dirvish-setup-menu)      ;; 设置菜单
 
   ;; ========== 鼠标支持（Emacs 29+） ==========
   (when (>= emacs-major-version 29)
@@ -348,9 +350,10 @@
       "do" '(dirvish-quick-access :which-key "quick-access")
       "dd" '(dirvish :which-key "dirvish"))))
 ;; ============================================
-;; 6. LSP配置
+;; 7. LSP配置
 ;; ============================================
-;; 1. 确保 eglot 可用（Emacs 29+ 内置，无需 straight 安装）
+
+;; 确保 eglot 可用（Emacs 29+ 内置，无需 straight 安装）
 (require 'eglot)
 
 ;; 性能优化：关闭不必要的文件监听（Windows 上尤其重要）
@@ -359,7 +362,7 @@
 (setq eglot-autoshutdown t)
 (setq eglot-send-changes-idle-time 0.5)
 
-;; 2. Rust 语言支持
+;; Rust 语言支持
 (use-package rust-mode
   :straight t
   :mode "\\.rs\\'"
@@ -368,18 +371,16 @@
   (setq rust-format-on-save t)
   (setq indent-tabs-mode nil))
 
-;; 3. C/C++ 语言支持（内置 cc-mode）
+;; C/C++ 语言支持（内置 cc-mode）
 (add-hook 'c-mode-hook #'eglot-ensure)
 (add-hook 'c++-mode-hook #'eglot-ensure)
 
-;; 4. 可选：consult-eglot（与 vertico 集成，搜索工作区符号）
+;; 可选：consult-eglot（与 vertico 集成，搜索工作区符号）
 (use-package consult-eglot
   :straight t
-  :after (consult eglot)
-  :bind (:map eglot-mode-map
-              ("C-c l s" . consult-eglot-symbols)))
+  :after (consult eglot))
 
-;; 1. Corfu 核心（弹窗补全）
+;; Corfu 核心（弹窗补全）
 (use-package corfu
   :straight t
   :demand t
@@ -403,7 +404,15 @@
   ;; 滚动条
   (setq corfu-scroll-margin 2))
 
-;; 2. Corfu 图标扩展（显示类型图标）
+(use-package corfu-terminal
+  :if (not (display-graphic-p))
+  :straight t
+  :after corfu
+  :demand t
+  :config
+  (corfu-terminal-mode 1))
+
+;; Corfu 图标扩展（显示类型图标）
 (use-package kind-icon
   :straight t
   :after corfu
@@ -411,11 +420,10 @@
   (setq kind-icon-default-face 'corfu-default)
   (add-to-list 'corfu-margin-formatters #'kind-icon-margin-formatter))
 
-;; ============================================
 ;; eglot Leader 键绑定（SPC l 前缀）
-;; ============================================
 (with-eval-after-load 'general
   (with-eval-after-load 'eglot
+    (setq eglot-ignored-server-capabilities '(:inlayHintProvider))
     (my-leader-def
       "l"  '(:ignore t :which-key "lsp")
       "la" '(eglot-code-actions :which-key "code action")
@@ -428,18 +436,35 @@
       "lh" '(eldoc-doc-buffer :which-key "hover/doc")
       "lo" '(eglot-code-action-organize-imports :which-key "organize imports")
       "ls" '(consult-eglot-symbols :which-key "workspace symbols")
-      "le" '(flymake-show-buffer-diagnostics :which-key "diagnostics"))))
+      "le" '(consult-flymake :which-key "diagnostics"))))
 
-;; 5. 可选：关闭 eldoc 的自动显示（避免 minibuffer 频繁跳动）
+;; 可选：关闭 eldoc 的自动显示（避免 minibuffer 频繁跳动）
 (setq eldoc-idle-delay 0.5)
 (setq eldoc-echo-area-use-multiline-p nil)
 
+(global-eldoc-mode 1)
+;; ★ 关键：在 eglot 接管 buffer 后设置显示策略
+;; 让 flymake 诊断和文档信息"抢着显示"，优先看到错误
+(add-hook 'eglot-managed-mode-hook
+	(lambda ()
+	    (setq-local eldoc-documentation-strategy
+			#'eldoc-documentation-compose-eagerly)))
+;; echo area 最多显示 3 行（nil=单行, t=不限制）
+(setq eldoc-echo-area-use-multiline-p 3)
+;; 不显示烦人的"被截断"提示
+(setq eldoc-echo-area-display-truncation-message nil)
+;; 触发延迟，越小越灵敏
+(setq eldoc-idle-delay 0.3)
+;; 确保 flymake 随 eglot 启动
+(add-hook 'eglot-managed-mode-hook #'flymake-mode)
+;; 保存时自动检查
+(setq flymake-start-on-save-buffer t)
+(setq flymake-no-changes-timeout 0.5)
+
+
 
 ;; ============================================
-;; 7. 美化org
-;; ============================================
-;; ============================================
-;; Org 保守美化（不隐藏标记，避免显示问题）
+;; 7. 美化Org 保守美化（不隐藏标记，避免显示问题）
 ;; ============================================
 
 (use-package org
@@ -448,26 +473,21 @@
   :config
   ;; 不隐藏标记符号（避免显示问题）
   (setq org-hide-emphasis-markers nil)
-  
   ;; 但隐藏标题星号
   (setq org-hide-leading-stars t)
-  
   ;; 代码块高亮
   (setq org-src-fontify-natively t)
-  
   ;; 标题字体
   (custom-set-faces
    '(org-level-1 ((t (:height 1.3 :weight bold :foreground "#51afef"))))
    '(org-level-2 ((t (:height 1.2 :weight bold :foreground "#c678dd"))))
    '(org-level-3 ((t (:height 1.1 :weight semi-bold :foreground "#98be65"))))
-   
-   ;; 强调样式（确保生效）
+   ;; 强调样式
    '(bold ((t (:weight bold :foreground "#dfdfdf"))))
    '(italic ((t (:slant italic :foreground "#c8c8c8"))))
    '(underline ((t (:underline t :foreground "#a9a1e1"))))
    '(org-verbatim ((t (:foreground "#a9a1e1" :background "#21242b"))))
    '(org-code ((t (:foreground "#a9a1e1" :background "#21242b"))))
-   
    ;; 代码块
    '(org-block ((t (:background "#21242b" :extend t))))
    '(org-link ((t (:foreground "#51afef" :underline t))))
@@ -489,17 +509,15 @@
 
 ;; 平滑滚动
 (pixel-scroll-precision-mode 1)
-
 ;; 剪贴板共享
 (setq select-enable-clipboard t)
-
 ;; Windows 优化
 (when (eq system-type 'windows-nt)
   (setq w32-get-true-file-attributes nil)
   (setq w32-pipe-read-delay 0)
   (setq w32-pipe-buffer-size (* 64 1024)))
 
-;; 启动时间
+;; 显示启动时间
 (message "Emacs initialized in %s" (emacs-init-time))
 
 (provide 'init)

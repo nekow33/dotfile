@@ -1,0 +1,62 @@
+
+* 单文件配置Emacs
+
+** 键位
+
+使用Evil作为基本键位，方便熟悉Vim操作的快速上手
+
+特殊的，在Insert模式下，设定了几个快捷键用于快速移动，如下
+
+| 快捷键 | 动作             |
+|--------+------------------|
+| C-a    | 移动到行首       |
+| C-e    | 移动到行尾       |
+| C-n    | 移动到下一行     |
+| C-p    | 移动到上一行     |
+| C-f    | 移动到下一个字符 |
+| C-n    | 移动到上一个字符 |
+
+在Normal模式下，使用了空格键作为leader键，并配置了如下快捷键
+| 快捷键 | 行为                     | 行为                       |
+|--------+--------------------------+----------------------------|
+| ff     | 查找文件                 | find-file                 |
+| fr     | 查找最近打开的文件       | consult-recent-file        |
+| fs     | 保存当前的buffer         | save-buffer                |
+| bb     | 选择并跳转buffer         | consult-buffer             |
+| bd     | 删除当前的buffer         | kill-current-buffer        |
+| bn     | 切换到下一个buffer       | next-buffer                |
+| bp     | 切换到上一个buffer       | previous-buffer            |
+| wh     | 移动光标到左边的窗口     | evil-window-left           |
+| wj     | 移动光标到下面的窗口     | evil-window-down           |
+| wk     | 移动光标到上面的窗口     | evil-window-up             |
+| wl     | 移动光标到右边的窗口     | evil-window-right          |
+| wd     | 删除当前的窗口           | evil-window-delete         |
+| w/     | 竖向拆分窗口             | evil-window-vsplit         |
+| w-     | 横向拆分窗口             | evil-window-split          |
+| ss     | 查找行内容               | consult-line               |
+| sf     | 只显示指定内容的行       | consult-focus-lines        |
+| yp     | 选择剪切板中的内容并粘贴 | consult-yank-pop           |
+| yr     | 选择剪切板中的内容并替换 | consult-yank-replace       |
+| SPC    | 打开M-x                  | execute-extend-command     |
+| qq     | 保存并退出               | save-buffers-kill-terminal |
+| re     | 指定当前的buffer         | eval-buffer                |
+
+** 插件使用
+
+| 插件            | 作用                    |
+|-----------------+-------------------------|
+| evil            | 键位配置                |
+| evil-collection | 搭配evil使用            |
+| general         | 配置leader键            |
+| evim            | evil模式的多光标编辑    |
+| dirvish         | 基于dired的增强文件管理 |
+| rust-mode       | 配置rust                |
+| consult-eglot   | 配置eglot的lsp配置      |
+| corfu           | 配合eglot的快速补全配置 |
+| corfu-terminal  | 无窗口模式下的补全弹出  |
+| kind-icon       | 美化图标                |
+| consult         |                         |
+| vertico         | 优化minibuffer          |
+| orderless       | 优化输入                |
+| org             | org模式                 |
+| org-superstar   | 美化org显示             |
