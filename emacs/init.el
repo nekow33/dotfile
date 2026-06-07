@@ -140,11 +140,36 @@
   :bind (
          ("M-p" . consult-yank-pop)))
 
+(use-package vterm
+  :straight t
+  :demand t
+  :ensure t)
+
+(use-package vterm-toggle
+  :ensure t
+  :bind (("C-c t" . vterm-toggle)      ; 普通切换
+         ("C-c T" . vterm-toggle-cd))  ; 切换并 cd 到当前项目目录
+  :config
+  ;; 不要用全屏，用窗口方式
+  (setq vterm-toggle-fullscreen-p nil)
+  
+  ;; 固定在底部打开
+  (setq vterm-toggle-scope 'project)   ; 按项目隔离 vterm
+  (add-to-list 'display-buffer-alist
+               '((lambda (buf _) 
+                   (with-current-buffer buf
+                     (eq major-mode 'vterm-mode)))
+                 (display-buffer-in-side-window)
+                 (side . bottom)
+                 (window-height . 0.3)
+                 (slot . 0))))
+
 
 ;; ============================================
 ;; 5. Evil配置
 ;; ============================================
 (use-package evil
+  :straight t
   :demand t
   :init
   (setq evil-want-integration t)
@@ -162,6 +187,9 @@
   (define-key evil-insert-state-map (kbd "C-n") 'next-line)
   (define-key evil-insert-state-map (kbd "C-p") 'previous-line)
   (define-key evil-insert-state-map (kbd "C-k") 'kill-line)
+
+  ;; Normal模式配置
+  (define-key evil-normal-state-map (kbd "C-i") 'evil-jump-forward)
   
   ;; 初始状态设置
   (evil-set-initial-state 'help-mode 'normal)
@@ -210,11 +238,17 @@
     "wd" '(evil-window-delete :which-key "delete")
     "w/" '(evil-window-vsplit :which-key "vsplit")
     "w-" '(evil-window-split :which-key "split")
+    "ws" '(:ignore t :which-key "resize widows")
+    "wsl" '(evil-window-right :which-key "right")
     
     ;; 搜索
     "s"  '(:ignore t :which-key "search")
     "ss" '(consult-line :which-key "search line")
     "sf" '(consult-focus-lines :which-key "focus line")
+
+    ;; vterm
+    "v"  '(:ignore t :which-key "vterm")
+    "vt"  '(vterm-other-window :which-key "vterm-other-window")
    
     ;; 复制粘贴
     "y"  '(:ignore t :which-key "yank")
@@ -362,6 +396,9 @@
 (setq eglot-autoshutdown t)
 (setq eglot-send-changes-idle-time 0.5)
 
+(setq xref-show-xrefs-function #'consult-xref)
+(setq xref-show-definitions-function #'consult-xref)
+
 ;; Rust 语言支持
 (use-package rust-mode
   :straight t
@@ -427,12 +464,12 @@
     (my-leader-def
       "l"  '(:ignore t :which-key "lsp")
       "la" '(eglot-code-actions :which-key "code action")
-      "lr" '(eglot-rename :which-key "rename")
+      "lR" '(eglot-rename :which-key "rename")
       "lf" '(eglot-format-buffer :which-key "format")
       "ld" '(xref-find-definitions :which-key "definition")
       "lD" '(xref-find-declaration :which-key "declaration")
       "li" '(eglot-find-implementation :which-key "implementation")
-      "lR" '(xref-find-references :which-key "references")
+      "lr" '(xref-find-references :which-key "references")
       "lh" '(eldoc-doc-buffer :which-key "hover/doc")
       "lo" '(eglot-code-action-organize-imports :which-key "organize imports")
       "ls" '(consult-eglot-symbols :which-key "workspace symbols")
