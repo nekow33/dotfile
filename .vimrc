@@ -74,7 +74,32 @@ set t_Co=256              " 256 色终端
 " colorscheme default       " 使用内置配色，可改为 desert/elflord/evening 等
 
 " 状态栏自定义（无插件实现）
-set statusline=%<%F\ %h%m%r%=%y\ %{&fileencoding?&fileencoding:&encoding}\ [%l/%L,%c]\ %P
+set laststatus=2
+function! ModeName() abort
+    let m = mode()
+    if m == 'n' | return 'NORMAL' | endif
+    if m == 'i' | return 'INSERT' | endif
+    if m == 'v' | return 'VISUAL' | endif
+    if m == 'V' | return 'V-LINE' | endif
+    if m == "\<C-v>" | return 'V-BLOCK' | endif
+    if m == 'R' | return 'REPLACE' | endif
+    if m == 'c' | return 'COMMAND' | endif
+    if m == 't' | return 'TERMINAL' | endif
+    return m
+endfunction
+
+function! BufCount() abort
+    return len(filter(range(1, bufnr('$')), 'buflisted(v:val)'))
+endfunction
+
+set statusline=
+set statusline+=%{ModeName()}%m%r%h%w
+set statusline+=\ [%l/%L]
+set statusline+=\ %{&fenc!=''?&fenc:&enc}
+set statusline+=\ %p%%
+set statusline+=%=
+set statusline+=%F
+set statusline+=\ [%{BufCount()}]
 
 " ============================================
 " 文件与备份
