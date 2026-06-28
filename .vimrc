@@ -2,243 +2,164 @@
 "
 " _   ________  ___    _________  _  _______________
 "| | / /  _/  |/  /   / ___/ __ \/ |/ / __/  _/ ___/
-"| |/ // // /|_/ /   / /__/ /_/ /    / _/_/ // (_ / 
-"|___/___/_/  /_/    \___/\____/_/|_/_/ /___/\___/  
-"                                                   
+"| |/ // // /|_/ /   / /__/ /_/ /    / _/_/ // (_ /
+"|___/___/_/  /_/    \___/\____/_/|_/_/ /___/\___/
+"
 "
 " vim config
 "
 
-" Vim-Plug =====================================================
-let vim_plug_installed=0
-if has('unix')
-    let vim_plug_path = expand('~/.vim/autoload/plug.vim')
-    let vim_plug_home=expand('~/.vim/plugged')
-    if !filereadable(vim_plug_path)
-        echo "Installing Vim-plug..."
-        echo ""
-        silent !mkdir -p ~/.vim/autoload
-        silent !curl -fLo ~/.vim/autoload/plug.vim --create-dirs https://raw.githubusercontent.com/junegunn/vim-plug/master/plug.vim
-        let vim_plug_installed = 1
-    endif
-endif
+" ============================================
+" 基础行为
+" ============================================
+set nocompatible          " 关闭 Vi 兼容模式
+filetype on               " 开启文件类型检测
+filetype plugin on        " 根据文件类型加载内置插件
+filetype indent on        " 根据文件类型加载内置缩进规则
 
-if vim_plug_installed
-    :execute 'source ' . fnameescape(vim_plug_path)
-endif
+" ============================================
+" 编辑体验
+" ============================================
+set encoding=utf-8        " 内部编码
+set fileencodings=utf-8,gb2312,gbk,gb18030,ucs-bom,cp936  " 自动识别文件编码
+set autoread              " 文件在外部修改后自动重载
+set hidden                " 允许切换 buffer 时不保存
+set clipboard=unnamedplus " 与系统剪贴板互通（Vim 7.4+）
+set backspace=indent,eol,start  " 退格键可跨行
 
-" Plug Config ==================================================
-call plug#begin(vim_plug_home)
+" ============================================
+" 显示设置
+" ============================================
+syntax on                 " 语法高亮
+set number                " 显示行号
+" set relativenumber        " 显示相对行号（Vim 7.3+）
+set cursorline            " 高亮当前行
+set laststatus=2          " 始终显示状态栏
+set showcmd               " 显示已输入但未完成的命令
+set showmode              " 显示当前模式
+set ruler                 " 显示光标位置
+set wildmenu              " 命令补全增强菜单
+set wildmode=longest:full,full
 
-Plug 'neoclide/coc.nvim', {'branch': 'release'}
+" ============================================
+" 搜索
+" ============================================
+set hlsearch              " 高亮搜索结果
+set incsearch             " 增量搜索
+set ignorecase            " 搜索忽略大小写
+set smartcase             " 包含大写时区分大小写
 
-Plug 'kien/rainbow_parentheses.vim'
+" 按空格或回车取消搜索高亮
+nnoremap <silent> <Space> :nohlsearch<CR>
+nnoremap <silent> <CR> :nohlsearch<CR>
 
-call plug#end()
+" ============================================
+" 缩进与排版
+" ============================================
+set expandtab             " Tab 转空格
+set tabstop=4             " Tab 显示为 4 空格
+set shiftwidth=4          " 自动缩进 4 空格
+set softtabstop=4         " 按 Tab 插入 4 空格
+set autoindent            " 继承上一行缩进
+set smartindent           " 智能缩进（C 风格）
+set cindent               " C 风格自动缩进
+set textwidth=120         " 自动换行长度
+set formatoptions+=mM     " 支持中文断行
 
-function! PlugLoaded(name)
-    return (
-        \ has_key(g:plugs, a:name) &&
-        \ isdirectory(g:plugs[a:name].dir) &&
-        \ strlen(g:plugs[a:name].dir) > 2 &&
-        \ stridx(&rtp, g:plugs[a:name].dir[:-2]) >= 0)
-endfunction
+" ============================================
+" 界面美化（终端下）
+" ============================================
+" set background=dark       " 暗色背景
+set t_Co=256              " 256 色终端
+" colorscheme default       " 使用内置配色，可改为 desert/elflord/evening 等
 
-" coc.nvim config
-if PlugLoaded('coc.nvim')
-    nmap <silent> gd <Plug>(coc-definition)
-    nmap <silent> gy <Plug>(coc-type-definition)
-    nmap <silent> gi <Plug>(coc-implementation)
-    nmap <silent> gr <Plug>(coc-references)
-else
-    echo "Coc.nvim is not installed. Try to install it"
-endif
+" 状态栏自定义（无插件实现）
+set statusline=%<%F\ %h%m%r%=%y\ %{&fileencoding?&fileencoding:&encoding}\ [%l/%L,%c]\ %P
 
-" rainbow_parentheses.vim config
-if PlugLoaded('rainbow_parentheses.vim')
-    let g:rainbow_active = 1
-    au VimEnter * RainbowParenthesesToggle
-    au Syntax * RainbowParenthesesLoadRound
-    au Syntax * RainbowParenthesesLoadSquare
-    au Syntax * RainbowParenthesesLoadBraces
-else
-    echom "RainbowParentheses.vim is not installed. Try to install it"
-endif
+" ============================================
+" 文件与备份
+" ============================================
+set nobackup              " 不生成备份文件
+set noswapfile            " 不生成 swap 文件
+set undofile              " 持久化撤销（Vim 7.3+）
+set undodir=~/.vim/undo   " 撤销文件目录（需手动创建目录）
 
-" Basic Config ===================================
+" ============================================
+" 实用快捷键映射
+" ============================================
+let mapleader = "\<Space>"       " Leader 键设为空格
+nnoremap <leader><leader> :map<leader><CR>
+set timeout
 
-colorscheme ron
+" 快速保存/退出
+nnoremap <leader>fs :w<CR>
+nnoremap <leader>qq :q<CR>
 
-set backspace=indent,eol,start
+" 分屏操作
+nnoremap <leader>wv :vsplit<CR>
+nnoremap <leader>ws :split<CR>
+nnoremap <leader>wc :close<CR>
+nnoremap <C-h> <C-w>h
+nnoremap <C-j> <C-w>j
+nnoremap <C-k> <C-w>k
+nnoremap <C-l> <C-w>l
 
-set nu
-set cursorline
-set mouse=a
-set wildmenu
-set ffs=unix,mac,dos
-set ruler
-set rulerformat=%30(%F%=%y%m%r%w\ %l,%c\ %p%%%)
-set showcmd
-set showmatch
-set incsearch
-set cindent
-set scrolloff=3
-set timeoutlen=200
+" 快速调整窗口大小
+nnoremap <leader>= <C-w>=
+nnoremap <leader>> <C-w>5>
+nnoremap <leader>< <C-w>5<
 
-autocmd InsertEnter * set nocursorline
-autocmd InsertLeave * set cursorline
-
-filetype on
-filetype plugin on
-syntax enable
-
-noremap q :noh<CR>
-
-" Indent Config ================================================
-set expandtab
-set shiftwidth=4
-set tabstop=4
-set softtabstop=4
-"use :retab! to convert <tab> to <space>
-
-set list
-set listchars=tab:··>
-
-" Switch Indent of Space and Tab
-function! s:SwitchIndent(opt)
-    if a:opt ==? 'TAB'
-        set noexpandtab
-        %retab!
-    elseif a:opt ==? 'SPACE'
-        set expandtab
-        %retab!
-    else
-        echo "Indent [Tab|Space]"
-    endif
-endfunc
-
-function! s:SwitchIndentComplete(ArgLead, CmdLine, CursorPos)
-    let myList = ['SPACE', "TAB"]
-    return filter(myList, 'v:val =~ "^'. toupper(a:ArgLead) .'"')
-endfunction
-command! -bang -complete=customlist,s:SwitchIndentComplete -nargs=1 Indent call s:SwitchIndent(<q-args>)
+" Buffer管理
+nnoremap <leader>bb :ls!<CR>
+nnoremap <leader>bl :blast<CR>
+nnoremap <leader>bn :bnext<CR>
+nnoremap <leader>bp :bprev<CR>
 
 
-" Paste Config =================================================
-function s:SetPaste()
-    set paste
-    echo "Set paste"
-endfunc
-
-function s:SetNoPaste()
-    set nopaste
-    echo "Set nopaste"
-endfunc
-command -nargs=0 P call s:SetPaste()
-command -nargs=0 NP call s:SetNoPaste()
-
-
-" Leader Config ================================================
-nnoremap <Space> <Nop>
-let mapleader="\<Space>"
-nnoremap <leader>w :w<CR>
+" 行首/行尾快速跳转
 nnoremap H ^
-nnoremap E $
+nnoremap L $
 
-inoremap <C-c> <Esc>
-inoremap <C-d> <Del>
+" 可视模式下缩进不丢失选择
+vnoremap < <gv
+vnoremap > >gv
 
-" Pairs Config =================================================
+" 上下移动行（类似 VS Code Alt+↑/↓）
+nnoremap <A-j> :m .+1<CR>==
+nnoremap <A-k> :m .-2<CR>==
+inoremap <A-j> <Esc>:m .+1<CR>==gi
+inoremap <A-k> <Esc>:m .-2<CR>==gi
+vnoremap <A-j> :m '>+1<CR>gv=gv
+vnoremap <A-k> :m '<-2<CR>gv=gv
 
-function! SkipDupPair(pair)
-    if getline('.')[col('.') - 1] == a:pair
-        return "\<Esc>la"
-    else 
-        return a:pair
-    endif
-endfunc
+" 系统复制/粘贴（兼容无 +clipboard 的编译版本）
+vnoremap <leader>y "+y
+nnoremap <leader>p "+p
 
-function! SkipQuote(quote)
-    if getline('.')[col('.') - 1] == a:quote
-        return "\<Esc>la"
-    else
-        return a:quote . a:quote . "\<Esc>i"
-    endif
-endfunc
+" ============================================
+" 自动命令
+" ============================================
+augroup myvimrc
+    autocmd!
+    " 保存时自动删除行尾空格
+    autocmd BufWritePre * :%s/\s\+$//e
+    " 打开文件回到上次位置
+    autocmd BufReadPost * if line("'\"") > 1 && line("'\"") <= line("$") | exe "normal! g'\"" | endif
+    " 对特定文件类型调整缩进
+    autocmd FileType yaml,json,html,css,javascript setlocal ts=2 sw=2 sts=2
+augroup END
 
-inoremap ) <C-r>=SkipDupPair(')')<CR>
-inoremap ] <C-r>=SkipDupPair(']')<CR>
-inoremap } <C-r>=SkipDupPair('}')<CR>
-inoremap > <C-r>=SkipDupPair('>')<CR>
-
-inoremap ' <C-r>=SkipQuote("'")<CR>
-inoremap " <C-r>=SkipQuote('"')<CR>
-inoremap ` <C-r>=SkipQuote('`')<CR>
-
-inoremap ( ()<ESC>i
-inoremap () ()<ESC>a
-
-inoremap [ []<Esc>i
-inoremap [] []<Esc>a
-
-inoremap { {}<Esc>i
-inoremap {} {}<Esc>a
-
-inoremap < <><Esc>i
-inoremap << <<<Esc>a
-inoremap <= <=<Esc>a
-inoremap <> <><Esc>i
-inoremap <<SPACE> <<SPACE>
-
-
-function! GetPreCursorChar()
-    if col('.') <= 1
-        return ''
-    endif
-    let before = getline('.')[:col('.') - 2]
-    return strcharpart(before, strchars(before)-1)
-endfunc
-
-function! GetAfterLines()
-    let line = getline('.')
-    let pos = col('.') - 1
-    let after = strpart(line, pos)
-    let n = line('$')
-    let i = line('.') + 1
-    while i <= n
-        let line = getline(i)
-        let after = after.' '.line
-        if !(line =~ '\v^\s*$')
-            break
-        endif
-        let i = i + 1
-    endwhile
-    return after
-endfunc
-
-function! DeleteMatchPair()
-    let pairs = [['(', ')'], ['[', ']'], ['{', '}'], ['"', '"'], ["'", "'"], ['<', '>'], ['`', '`']]
-    let before = GetPreCursorChar()
-    for p in pairs
-        if before == p[0]
-            let after = GetAfterLines()
-            let blankLen = strlen(after)
-            let afterSplit = split(after, '^\s*')
-            if len(afterSplit) > 0
-                let noBlankLen = strlen(afterSplit[0])
-                let i = blankLen - noBlankLen
-                if afterSplit[0][0] == p[1]
-                    return "\<BS>".repeat("\<DEL>", i + 1)
-                endif
-            endif
-        endif
-    endfor
-    return "\<BS>"
-endfunc
-
-inoremap <Bs> <C-r>=DeleteMatchPair()<CR>
-inoremap <C-H> <C-r>=DeleteMatchPair()<CR>
-
-
-
-
+" ============================================
+" 内置补全增强
+" ============================================
+set completeopt=menuone,longest,preview
+set omnifunc=syntaxcomplete#Complete  " 语法补全
+set tags=./tags;,tags;
+set noignorecase
+set completeopt=menuone,noinsert,noselect
+set pumheight=7
+set splitbelow
+inoremap <expr> <Tab> pumvisible() ? "\<C-n>" : (col('.')>2 && getline('.')[col('.')-2]=~'\k' ? "\<C-x>\<C-]>" : "\<Tab>")
+inoremap <expr> <S-Tab> pumvisible() ? "\<C-p>" : "\<S-Tab>"
+inoremap <expr> <CR> pumvisible() ? "\<C-y>" : "\<CR>"
+inoremap <expr> <C-e> pumvisible() ? "\<C-e>" : "\<C-e>"
