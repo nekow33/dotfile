@@ -1,33 +1,56 @@
 " ============================================================================
 "  ~/.vimrc —— 单文件配置（2026-09-28 由 ~/.vim/conf/、plugins.vim、
-"              after/plugin/zz-emacs-compat.vim、autoload/ec*、colors/ 合并而来）
+" 本文件第 10 节、autoload/ec*、colors/ 合并而来）
 "
 "  配置对齐 ~/.emacs.d/init.el（Evil + SPC leader + doom-tomorrow-night）。
 "
 "  为什么能合成一个文件（原来必须拆开的原因与现在的处理）：
-"    · 插件选项（let g:xxx）—— 插件在 vimrc 执行完之后才加载，所以写在文件里
-"      任何位置都早于插件读取它们，无需单独文件。
-"    · LSP 注册与选项 —— 交给插件的官方便捷变量 g:lsp_servers / g:lsp_options，
-"      插件加载时会自己 LspAddServer / LspOptionsSet（见 plugged/lsp/plugin/lsp.vim）。
-"    · 「插件加载之后」才能做的事（读插件的 <Plug> 映射、调用插件函数）——
-"      统一放进文件末尾的 EcPluginIntegrate()，由 autocmd VimEnter 调用
-"      （VimEnter 在插件加载之后、用户操作之前触发）。
-"    · 函数本体原来在 autoload/ec*（按需加载），现在全部是全局函数 EcXxx()，
-"      定义在本文件里；状态栏用 %!EcUiStatusline() 引用。
-"    · 配色原来在 colors/doom-tomorrow-night.vim，已内联到第 3 节。
-"      ⚠ 代价：:colorscheme 不再可用，改配色直接改第 3 节那一段。
+" · 插件选项（let g:xxx）—— 插件在 vimrc 执行完之后才加载，所以写在文件里
+" 任何位置都早于插件读取它们，无需单独文件。
+" · LSP 注册与选项 —— 交给插件的官方便捷变量 g:lsp_servers / g:lsp_options，
+" 插件加载时会自己 LspAddServer / LspOptionsSet（见 plugged/lsp/plugin/lsp.vim）。
+" · 「插件加载之后」才能做的事（读插件的 <Plug> 映射、调用插件函数）——
+" 统一放进文件末尾的 EcPluginIntegrate()，由 autocmd VimEnter 调用
+" （VimEnter 在插件加载之后、用户操作之前触发）。
+" · 函数本体原来在 autoload/ec*（按需加载），现在全部是全局函数 EcXxx()，
+" 定义在本文件里；状态栏用 %!EcUiStatusline() 引用。
+" · 配色原来在 colors/doom-tomorrow-night.vim，已内联到第 3 节。
+" ⚠ 代价：:colorscheme 不再可用，改配色直接改第 3 节那一段。
 "
 "  备份：合并前的分层配置在 ~/vim-recon/config-single-file-20260928-202150/
 "  对照说明与踩坑记录：~/.vim/EMACS-VIM.md
+"
+"  2026-10-25 优化（每处细节见对应位置的 ⚠ 注释）：
+"   · 修：状态栏的诊断数从来没显示过 —— Vim 不会再解析 %{...} 返回值里的 %#组#，
+"     屏幕上照字面显示 "%#EcDiagError# E2%#EcDiagWarn# W3"。改成直接拼接进
+"     %!EcUiStatusline() 的返回值（%! 的结果才会当格式串解析）。
+"   · 修：SPC b c 会假死 —— :bdelete 在 'confirm' 下对未保存 buffer 逐个弹窗等待。
+"     现在跳过有改动的 buffer 并报数，绝不静默丢改动。
+"   · 修：多行剪贴板粘出来多一个空行（只去掉了行尾一个 \n）。
+"   · 修：SPC s f 搜的是磁盘文件（未保存改动搜不到、无名 buffer 报 E32）→ 改扫 buffer。
+"   · 修：SPC d d 的路径被二次 expand()（目录名含 % / # / ~ 时会被替换掉）。
+"   · 性能：SPC f f / b l / s s 等 picker 每次开都同步读一次剪贴板（实测 191ms）。
+"     改成 FocusGained 异步预热 + picker 读缓存 → 0ms（g:ec_clip_prefetch = 0 可退回）。
+"   · 修：重载配置（SPC h r）不再漏掉插件层集成（which-key 菜单 / easymotion 映射等）。
+"   · 修：LSP 进度标题按字节截断，中文会被切成半个字符 → 改按字符截断。
+"   · 兼容：装上带 +clipboard 的 Vim（gvim）之后不再抢原生 <C-r>+ / <C-r>* 。
+"  改动前的完整备份：~/.vimrc.bak.20261025-114305-aiopt
 " ============================================================================
 
 set nocompatible
+" 安全：不执行外来文件里的 `vim:` modeline（我们是 root，编辑来源不可信的文件时
+" modeline 是可执行面）。想恢复默认行为就改成 set modelines=5。
+set modelines=0
 filetype plugin indent on
 syntax on
 
+" Vim 自带的 matchit：让 % 能在 if/endif、<div></div>、begin/end 等结构间跳转。
+" 用 packadd! 而不是装插件 —— 零依赖、零成本。
+packadd! matchit
+
 
 " ==========================================================================
-" 1. leader（必须最先：后面所有映射都依赖它）
+" Section 1. leader（必须最先：后面所有映射都依赖它）
 " （原 conf/00-leader.vim）
 " ==========================================================================
 
@@ -54,6 +77,12 @@ set confirm                 " 未保存退出时询问（对应 Emacs confirm-ki
 set encoding=utf-8
 set fileencodings=utf-8,gb2312,gbk,gb18030,ucs-bom,cp936,latin1
 set autoread                " 外部改动自动重载
+" ⚠ autoread 只在特定时机去比对磁盘时间戳，光设它经常「不生效」——
+" 补上获得焦点 / 进入 buffer 时的检查（FocusGained 在终端 Vim 下由终端焦点事件触发）。
+augroup ec_autoread
+  autocmd!
+  autocmd FocusGained,BufEnter * checktime
+augroup END
 set hidden                  " 切换 buffer 不强制保存
 set nowritebackup           " writebackup 默认是开的，这里关掉（配合默认的 nobackup，不留任何备份文件）
 set noswapfile
@@ -70,13 +99,13 @@ set nostartofline           " C-d / C-u / G / H 保持当前列（默认 startof
 " 跳转时优先复用上次访问过的窗口（:sbuffer / LSP 跳转之类都用得上）
 set switchbuf=uselast
 " 注：jumpoptions 这边只有 stack 一个旗标（C-o 回来恢复视图的 view 是 Neovim 的东西，
-"     Vim 9.2 设它直接报 E474），所以不动它。
+" Vim 9.2 设它直接报 E474），所以不动它。
 set nrformats=hex           " C-a / C-x 只认十进制与 0x
 
 " ---------------------------------------------------------------- 剪贴板 ----
 " 本机 Vim 编译时没有 +clipboard（-clipboard -X11 -wayland），g:clipboard 也不生效。
 " 系统剪贴板由 <leader>y 系列映射实现：
-"   映射见 conf/60-keymaps.vim，实现在 autoload/ec/clip.vim。
+"   映射见第 8 节，实现在第 6 节（clip.vim 部分）。
 
 " ==========================================================================
 " 3. 界面与外观（含内联配色，原 conf/20-ui.vim + colors/doom-tomorrow-night.vim）
@@ -91,7 +120,7 @@ if exists('syntax_on')
   syntax reset
 endif
 let g:colors_name = 'doom-tomorrow-night'
-set background=dark
+" 注：这里不再写 `set background=dark` —— 本节开头已经设过，值一样，纯重复项。
 
 " 名称 -> [GUI 十六进制, 256 色近似]
 let s:p = {
@@ -160,8 +189,6 @@ call s:hi('Cursor',        'bg',   'fg',   '')
 call s:hi('lCursor',       'bg',   'fg',   '')
 call s:hi('TermCursor',    'bg',   'fg',   '')
 call s:hi('CursorLine',    '',     'bg_hi','')
-call s:hi('CursorColumn',  '',     'bg_hi','')
-call s:hi('ColorColumn',   '',     'bg_alt','')
 call s:hi('LineNr',        'grey', 'bg',   '')
 call s:hi('LineNrAbove',   'base5','bg',   '')
 call s:hi('LineNrBelow',   'base5','bg',   '')
@@ -189,11 +216,6 @@ call s:hi('Underlined',    'blue', '',     'underline')
 call s:hi('Conceal',       'faint','bg',   '')
 call s:hi('Ignore',        '',     '',     '')
 call s:hi('Error',         'red',  'bg',   '')
-call s:hi('ErrorMsg',      'red',  '',     '')
-call s:hi('WarningMsg',    'yellow','',    '')
-call s:hi('MoreMsg',       'green','',     '')
-call s:hi('ModeMsg',       'fg',   '',     'bold')
-call s:hi('Question',      'green','',     '')
 call s:hi('Todo',          'bg',   'yellow','bold')
 call s:hi('SpellBad',      '',     '',     'undercurl', s:p.red[0])
 call s:hi('SpellCap',      '',     '',     'undercurl', s:p.orange[0])
@@ -201,7 +223,6 @@ call s:hi('SpellCap',      '',     '',     'undercurl', s:p.orange[0])
 " --------------------------------------------------------------- 状态栏 ---
 call s:hi('StatusLine',    'fg',   'modeline','')
 call s:hi('StatusLineNC',  'base5','modeline','')
-call s:hi('StatusLineTerm','fg',   'modeline','')
 call s:hi('TabLine',       'grey', 'bg_alt','')
 call s:hi('TabLineFill',   '',     'bg_alt','')
 call s:hi('TabLineSel',    'fg',   'bg_hi','bold')
@@ -254,7 +275,6 @@ call s:hi('Substitute',       'bg',   'red',  '')
 call s:hi('CursorColumn',     '',     'bg_hi','')
 call s:hi('ColorColumn',      '',     'bg_alt','')
 call s:hi('EcJumpLabel',   'bg',   'orange','bold')
-call s:hi('EcJumpDim',     'faint','',     '')
 call s:hi('EcLspProgress','yellow','bg_alt','bold')
 call s:hi('EcDiagError',   'red',  'bg_alt','')
 call s:hi('EcDiagWarn',    'yellow','bg_alt','')
@@ -425,7 +445,26 @@ set belloff=all
 set foldlevel=99            " 手工折叠默认全展开（foldmethod 默认就是 manual）
 set matchtime=1
 set showmatch               " show-paren-mode
-set matchpairs+=<:>
+" 尖括号配对只对真的把 <> 当括号的语言有意义：全局打开会让 markdown 正文、
+" 其它语言的比较运算里的 < > 也被 % 当成一对（2026-09-28 从全局改成按 filetype）。
+" 实测来源：rust / html 由 **Vim 自带 ftplugin** 自己就加了 <:>（ftplugin/rust.vim、
+" ftplugin/html.vim），cpp 的那行上游是注释掉的，c 完全没有 —— 所以这里主要补 c/cpp，
+" 其余几个是顺带的（重复加无害，matchpairs 的值是幂等的）。
+augroup ec_matchpairs
+  autocmd!
+  autocmd FileType c,cpp,cs,java,html,xml,xhtml,php,cshtml setlocal matchpairs+=<:>
+augroup END
+
+" 'formatoptions' 里 m/M（中文断行）用 FileType 兜底：
+" 全局 set 会被后加载的 ftplugin 覆盖掉，而我们的自动命令注册在 filetype 机制之后，
+" 所以这一条是最后生效的（同名选项的 set 会叠加，不会互相清除）。
+" 注：第 5 节还有一条全局 `set formatoptions+=mM`，两条都**要留着**：
+" 全局那条管「FileType 事件根本不会触发的 buffer」（未命名 / 未识别的文件），
+" 这条 setlocal 管「后加载的 ftplugin 把全局值覆盖掉」的情况。
+augroup ec_formatoptions
+  autocmd!
+  autocmd FileType * setlocal formatoptions+=mM
+augroup END
 set mouse=a
 set mousemodel=popup
 set keymodel=startsel,stopsel
@@ -435,7 +474,7 @@ set winminheight=0
 set synmaxcol=500           " 长行保护（对应 Emacs so-long-threshold=500）
 set maxmempattern=8000      " 行数 / 字节数再多也不截断
 
-" 状态栏 / bufferline：实现在 autoload/ec/ui.vim
+" 状态栏 / bufferline：实现在第 6 节（ui.vim 部分）
 set statusline=%!EcUiStatusline()
 set tabline=%!EcUiTabline()
 
@@ -478,14 +517,14 @@ set sessionoptions-=options
 set viewoptions-=options
 
 " 说明：这里原来还有两行
-"   set iskeyword+=-            —— 全局改词法，会连纯文本 / python 的 w、*、补全一起改，
-"                                 现在收窄到需要的语言（见 conf/50-autocmds.vim）
+" set iskeyword+=- —— 全局改词法，会连纯文本 / python 的 w、*、补全一起改，
+" 现在收窄到需要的语言（见第 7 节）
 "   set omnifunc=syntaxcomplete#Complete
-"                               —— 会和 LSP 抢 omnifunc（插件对附加了服务器的 buffer 用
-"                                 setlocal 设 g:LspOmniFunc），各语言的 ftplugin 也自带
-"                                 omnifunc，所以全局那行是多余的
+" —— 会和 LSP 抢 omnifunc（插件对附加了服务器的 buffer 用
+" setlocal 设 g:LspOmniFunc），各语言的 ftplugin 也自带
+" omnifunc，所以全局那行是多余的
 "
-" 保存时自动格式化（对应 apheleia-global-mode）的开关，实现在 autoload/ec/fmt.vim。
+" 保存时自动格式化（对应 apheleia-global-mode）的开关，实现在第 6 节（fmt.vim 部分）。
 " 设 0 只关掉「保存时自动」；<leader>l f 的手动格式化不受影响。
 let g:ec_autoformat = get(g:, 'ec_autoformat', 1)
 
@@ -503,7 +542,6 @@ endfunction
 " 所以只能在启动前把剪贴板内容注入 `--bind ctrl-p:put(文本)`。
 " 实测（fzf 0.72.0）put() 的参数是**字面量**：空格、单双引号、逗号、括号、| & % 都不用转义；
 " 只有换行必须折成空格（fzf 的 query 是单行），另外去掉控制字符、限制长度。
-let s:fzf_base_opts = ''
 " 把一段文本变成 fzf 的 --bind '...:put(文本)' 片段
 " 规则（实测 fzf 0.72）：值必须用单引号包住；内部单引号转义成 '\''
 " 换行折成空格（query 单行）、去掉控制字符、限长 800 字节
@@ -520,10 +558,10 @@ function! EcFzfPutBind(key, text) abort
 endfunction
 
 function! EcFzfClipBind() abort
-  if s:fzf_base_opts ==# ''
-    let s:fzf_base_opts = $FZF_DEFAULT_OPTS
-  endif
-  let l:opts = s:fzf_base_opts
+  " 基准要用「vimrc 那层」（含本文件设的 ctrl-n/ctrl-p/ctrl-d/ctrl-u），
+  " 用环境原始值会把那组键位冲掉。
+  let l:opts = get(g:, 'ec_fzf_vimrc_opts',
+        \ get(g:, 'ec_fzf_base_opts', $FZF_DEFAULT_OPTS))
   " <C-p> = 「我刚在 Vim 里 y 的东西」：寄存器 0（最近一次 yank）→ "（最近一次
   " yank/删除）。注意 y 只进 Vim 寄存器，**不会**写系统剪贴板 —— 这正是
   " 「按 <C-p> 却粘出别的东西」的原因。
@@ -534,7 +572,9 @@ function! EcFzfClipBind() abort
   " <C-y> = 系统剪贴板（外部程序复制的东西走这条）；寄存器为空时 <C-p> 也回退到它。
   " 为什么不是 <C-v>：fzf.vim 用 --expect=ctrl-t,ctrl-x,ctrl-v 把这三个键抢走了
   " （ctrl-v 在 picker 里是「垂直分屏打开」），所以在 fzf 里只有 <C-y> 可用。
-  let l:sys = EcClipGet()
+  " ⚠ 用 EcClipPeek()（读缓存，0ms）而不是 EcClipGet()（同步起 powershell，
+  " 191ms）—— 缓存机制见下面 clip.vim 那一段。
+  let l:sys = EcClipPeek()
   if l:sys !=# ''
     let l:opts .= EcFzfPutBind('ctrl-y', l:sys)
     if l:reg ==# ''
@@ -544,9 +584,15 @@ function! EcFzfClipBind() abort
   let $FZF_DEFAULT_OPTS = l:opts
 endfunction
 
+" 兜底提示：插件没装时给一句明确的话，而不是执行一个「语义并不等价」的命令
+" （比如 :ls 只是列 buffer，跟「工作区符号」毫无关系）。
+function! EcMissingFeature(what) abort
+  echomsg '此功能需要 ' . a:what . '，当前不可用'
+endfunction
+
 function! EcPick(preferred, fallback) abort
   if EcHasCmd(a:preferred)
-    call EcFzfClipBind()                         " 让 fzf 也能 <C-p> 粘贴（读剪贴板约 200ms）
+    call EcFzfClipBind()                         " 让 fzf 也能 <C-p> 粘贴（读缓存，0ms）
     execute a:preferred
   else
     execute a:fallback
@@ -583,9 +629,9 @@ function! EcDiagText(action) abort
   elseif a:action ==# 'off'
     let l:new = v:false
   else
-    " ⚠ 必须显式给 v:true / v:false：legacy 脚本里 !v:false 得到的是 Number 1，
-    "   而插件内部（Vim9 的 LspDiagsOptionsChanged）是拿 != 跟 Bool 比较的，
-    "   类型不一致会抛 E1091 并被静默吞掉 —— 表现就是「关得掉、开不回来」。
+ " ⚠ 必须显式给 v:true / v:false：legacy 脚本里 !v:false 得到的是 Number 1，
+ " 而插件内部（Vim9 的 LspDiagsOptionsChanged）是拿 != 跟 Bool 比较的，
+ " 类型不一致会抛 E1091 并被静默吞掉 —— 表现就是「关得掉、开不回来」。
     let l:new = get(LspOptionsGet(), 'showDiagWithVirtualText', v:false)
           \ ? v:false : v:true
   endif
@@ -606,23 +652,30 @@ endfunction
 " ------------------------------------------------ 文件管理器 / 终端 --------
 " 对应 Emacs：SPC d d = dirvish、SPC d o = dirvish-quick-access
 function! EcExplore(cwd) abort
-  let l:dir = a:cwd ? '.' : '%:h'
+  " 无名 buffer 的 %:h 是空串，:edit 空参数会抛 E32: No file name —— 退回当前目录
+  let l:dir = a:cwd ? '.' : expand('%:h')
+  if empty(l:dir)
+    let l:dir = getcwd()
+  endif
+  " ⚠ l:dir 已经是展开过的真实路径，不能再过一遍 expand()：expand() 会把路径里的
+  " % / # / ~ 再当占位符替换一次（目录名是 "100%" 这种时会被换成当前文件名）。
   if EcHasCmd('Dirvish')
-    execute 'Dirvish' fnameescape(expand(l:dir))
+    execute 'Dirvish' fnameescape(l:dir)
   elseif EcHasCmd('Lexplore')    " 没装 dirvish 时退回 netrw
     execute 'Lexplore'
   else
-    execute 'edit' fnameescape(expand(l:dir))
+    " 防御分支：netrw 随 Vim 发行，实际几乎走不到（review 指出这是死代码，保留作兜底）
+    execute 'edit' fnameescape(l:dir)
   endif
 endfunction
 
 " 对应 Emacs：SPC e t = vterm、SPC e e = eshell、SPC e c = eshell-command
 "
 " action 取值：
-"   'toggle'  呼出 / 收起浮窗（收起时终端进程保留，再呼出还是同一个 shell）
-"   'new'     新开一个浮窗
-"   'cmd'     问一条命令并在浮窗里跑（跑完自动关）
-"   'kill'    关掉当前浮窗并结束它的进程
+" 'toggle' 呼出 / 收起浮窗（收起时终端进程保留，再呼出还是同一个 shell）
+" 'new' 新开一个浮窗
+" 'cmd' 问一条命令并在浮窗里跑（跑完自动关）
+" 'kill' 关掉当前浮窗并结束它的进程
 "   'killall' 关掉所有浮窗和进程
 "
 " 为什么不只用 F7/F8：很多键盘（60%/75%）没有独立 F 键，Windows Terminal 也会
@@ -655,11 +708,23 @@ endfunction
 " ---------------------------------------------------------- buffer / 窗口 ---
 function! EcCloseOthers() abort
   let l:cur = bufnr('%')
+  let l:skip = 0
   for l:b in range(1, bufnr('$'))
-    if l:b != l:cur && buflisted(l:b)
-      execute 'silent! bdelete' l:b
+    if l:b == l:cur || !buflisted(l:b)
+      continue
     endif
+    " 「有未保存改动」的 buffer 不要直接 :bdelete —— 'confirm' 是开着的，Vim 会
+    " 逐个弹「Save changes to …?」并等回答，在映射里表现就是**整个 Vim 卡住**
+    " （2026-10-25 实测）。这里跳过 + 报数：绝不静默丢改动，也不会假死。
+    if getbufvar(l:b, '&modified')
+      let l:skip += 1
+      continue
+    endif
+    execute 'silent! bdelete' l:b
   endfor
+  if l:skip > 0
+    echomsg printf('%d 个 buffer 有未保存改动，已跳过（要强制关就自己 :bd!）', l:skip)
+  endif
 endfunction
 
 " 只有一个窗口时 :close 会报 E444，这里静默跳过
@@ -691,8 +756,30 @@ function! EcReloadConfig() abort
   " 不能在函数里直接 source：重新定义正在执行的函数会触发
   " E127: Cannot redefine function ... It is in use，source 就此中断（配置只加载一半）。
   " 用 timer 推迟到函数返回之后再 source。
+  " 两个注意点：
+ " 1) 不能在函数里直接 source —— 重新定义正在执行的函数会触发
+ " E127: Cannot redefine function ... It is in use，source 会就此中断
+ " （配置只加载一半），所以用 timer 推迟到函数返回之后。
+ " 2) 推迟之后 source 是**异步**的：期间如果你切了别的 buffer，个别副作用会
+ " 落在当时那个 buffer 上（syntax/hi 是全局的，不受影响）。
   echomsg '正在重新加载 ' . l:f
-  call timer_start(0, {-> execute('source ' . fnameescape(l:f))})
+  call timer_start(0, {-> s:DoReloadConfig(l:f)})
+endfunction
+
+function! s:DoReloadConfig(f) abort
+  try
+    execute 'source' fnameescape(a:f)
+    " 插件层的东西（which-key 菜单、easymotion / lexima 的映射、LSP 原生接口）
+    " 只在 VimEnter 里装一次；重载配置时 VimEnter 不会再触发，所以这里补跑一次。
+    " 否则改了 g:which_key_map / 插件选项就得重启 Vim —— 重载就没意义了。
+    if exists('*EcPluginIntegrate')
+      call EcPluginIntegrate()
+    endif
+    echomsg '配置已重新加载完成：' . a:f
+  catch
+ " 静默失败最坑：重载到一半停了、界面看着又没坏，很难察觉
+    echomsg '重新加载出错（配置可能只加载了一半）：' . v:exception
+  endtry
 endfunction
 
 " --------------------------------------------------------- 撤销 / 选区 -----
@@ -712,7 +799,7 @@ let s:region_cycle = ['iw', 'iW', 'i"', "i'", 'i`', 'i(', 'i[', 'i{',
 let s:region_i = 0
 
 " n == 0 从普通模式开始（选中当前词）；n > 0 扩大；n < 0 收缩。
-" 装了 vim-expand-region 时 after/plugin 会把 <leader>x x 直接绑到它的 <Plug>，
+" 装了 vim-expand-region 时第 10 节会把 <leader>x x 直接绑到它的 <Plug>，
 " 这里是没装插件时的兜底（原来还有个 :ExpandRegion 分支，但那个命令并不存在）。
 function! EcRegionEx(n) abort
   if a:n == 0
@@ -729,8 +816,30 @@ endfunction
 function! EcFocusLines() abort
   let l:pat = input('/')
   if l:pat ==# '' | return | endif
-  silent! execute 'vimgrep /' . escape(l:pat, '/') . '/j %'
-  if empty(getqflist()) | echomsg '没有匹配：' . l:pat | return | endif
+  " ⚠ 不用 :vimgrep —— 它读的是**磁盘上的文件**：未保存的改动搜不到，
+  " 无名 buffer 上还会直接 E32（No file name）。直接扫 buffer 内容，
+  " 才是 consult-focus-lines 的语义（搜你眼前这份文本）。
+  let l:items = []
+  let l:lnum = 0
+  try
+    for l:text in getline(1, '$')
+      let l:lnum += 1
+      let l:col = match(l:text, l:pat)
+      if l:col >= 0
+        call add(l:items, {'bufnr': bufnr('%'), 'lnum': l:lnum,
+              \ 'col': l:col + 1, 'text': l:text})
+      endif
+    endfor
+  catch
+    echomsg '正则错误：' . v:exception
+    return
+  endtry
+  if empty(l:items)
+    echomsg '没有匹配：' . l:pat
+    return
+  endif
+  " setqflist 直接填列表：不落磁盘、不碰 :vimgrep 的副作用（会重置跳转/快速修复）
+  call setqflist([], ' ', {'title': 'focus: ' . l:pat, 'items': l:items})
   copen
 endfunction
 
@@ -776,20 +885,131 @@ function! EcReassertMappings() abort
 endfunction
 
 " ---------------------------------------------------------------- clip.vim --
-" 读 Windows 剪贴板（≈200ms/次：WSL 里只有 powershell.exe 可用，wl-paste/xclip 都没装）
+" 读 Windows 剪贴板（实测 ≈191ms/次：WSL 里只有 powershell.exe 可用，
+" wl-paste / xclip 都没装）。
+" 有 +clipboard 的 Vim（比如按文档建议装了 gvim 之后）直接走原生寄存器，不再绕 WSL。
+function! s:clip_normalize(t) abort
+  " Get-Clipboard 每行输出一个 \r\n，末尾还会多一行空的 —— 原来只去掉行尾的
+  " **一个** \n，于是多行文本粘出来总会多一个空行（2026-10-25 实测修掉）。
+  let l:t = substitute(a:t, '\r\n', '\n', 'g')
+  let l:t = substitute(l:t, '\r', '', 'g')     " 异步读原始字节时可能残留孤立的 \r
+  return substitute(l:t, '\n\+$', '', '')
+endfunction
+
+" 探测只做一次：powershell.exe 不存在时（Windows 原生 Vim、PATH 变了），
+" 原来每粘一次都会 fork 一个必然失败的子进程 + 刷一条错误。
+let s:clip_probe = -1          " -1 未探测 / 0 不可用 / 1 可用
+
+function! s:clip_available() abort
+  if s:clip_probe < 0
+    let s:clip_probe = executable('powershell.exe') ? 1 : 0
+    if !s:clip_probe
+      echomsg '读不到 Windows 剪贴板：powershell.exe 不在 PATH 里'
+    endif
+  endif
+  return s:clip_probe
+endfunction
+
 function! EcClipGet() abort
+  if has('clipboard')
+    return getreg('+')
+  endif
+  if !s:clip_available()
+    return ''
+  endif
   let l:t = system(['powershell.exe', '-NoProfile', '-NoLogo', '-Command', 'Get-Clipboard'])
   if v:shell_error != 0
     echomsg '读取 Windows 剪贴板失败'
     return ''
   endif
-  return substitute(substitute(l:t, '\r\n', '\n', 'g'), '\n$', '', '')
+  " 顺手更新 picker 用的缓存：这是刚刚读到的、最可信的一份
+  let l:t = s:clip_normalize(l:t)
+  call s:clip_cache_store(l:t)
+  return l:t
 endfunction
 
 " 命令行版本：把换行折成空格（命令行里塞不进换行）
 function! EcClipGetCmdline() abort
   return substitute(EcClipGet(), '\n', ' ', 'g')
 endfunction
+
+" ------------------------------------------------- 剪贴板缓存（只给 fzf 用）----
+" 为什么要有它：EcPick() 开 picker 之前要把剪贴板内容注入 fzf 的 --bind
+" （fzf 是独立进程，读不到 Vim 寄存器），而读一次要 191ms —— 于是
+" SPC f f / SPC b l / SPC s s 每次都被这 191ms 拖住，可你多半根本不会按那个
+" 粘贴键（2026-10-25 实测：picker 的这部分开销是纯粹的浪费）。
+" 系统剪贴板只可能被**外部程序**改写（本机没有 +clipboard，Vim 改不了它），
+" 而那只会发生在 Vim 失焦的时候 —— 所以在 FocusGained 时异步刷新一次就够：
+" picker 里读缓存 = 0ms，内容仍然是最新的。
+let s:clip_cache    = ''
+let s:clip_cache_at = []
+let s:clip_job      = v:null
+
+function! s:clip_cache_store(text) abort
+  let s:clip_cache    = a:text
+  let s:clip_cache_at = reltime()
+endfunction
+
+function! s:clip_prefetch_done(tmp, job, status) abort
+  if a:status == 0 && filereadable(a:tmp)
+    call s:clip_cache_store(s:clip_normalize(join(readfile(a:tmp, 'b'), "\n")))
+  endif
+  call delete(a:tmp)
+endfunction
+
+" 后台刷新缓存：让 job 把 stdout 直接写进临时文件，退出时一次性读回来
+" （比拼 channel 分片简单，也不会被半行数据打断）
+function! EcClipPrefetch(...) abort
+  if !get(g:, 'ec_clip_prefetch', 1)
+    return
+  endif
+  if has('clipboard')
+    call s:clip_cache_store(getreg('+'))
+    return
+  endif
+  if !exists('*job_start') || s:clip_probe == 0
+    return
+  endif
+  " 已经在跑就不重复起：终端可能连着发好几个 FocusGained
+  if s:clip_job isnot v:null && job_status(s:clip_job) ==# 'run'
+    return
+  endif
+  if !s:clip_available()
+    return
+  endif
+  let l:tmp = tempname()
+  let s:clip_job = job_start(
+        \ ['powershell.exe', '-NoProfile', '-NoLogo', '-Command', 'Get-Clipboard'],
+        \ {'out_io': 'file', 'out_name': l:tmp, 'err_io': 'null',
+        \  'exit_cb': function('s:clip_prefetch_done', [l:tmp])})
+  if job_status(s:clip_job) ==# 'fail'
+    call delete(l:tmp)
+    let s:clip_job = v:null
+  endif
+endfunction
+
+" picker 用的读法：缓存够新就直接用，否则同步读一次并更新缓存。
+" 30s 的 TTL 只是兜底 —— 终端不发 FocusGained 时，最多每 30s 付一次 191ms。
+" 若你的终端不转发焦点事件（`t_focus` 为空 / 非 Windows Terminal 之类），
+" 缓存就只在 VimEnter 和自己粘贴时刷新，可能拿到旧内容 ——
+" 这种情况下设 g:ec_clip_prefetch = 0，退回原来的「每次 picker 同步读」。
+function! EcClipPeek() abort
+  if !get(g:, 'ec_clip_prefetch', 1)
+    return EcClipGet()
+  endif
+  if !empty(s:clip_cache_at) && reltimefloat(reltime(s:clip_cache_at)) < 30.0
+    return s:clip_cache
+  endif
+  let l:t = EcClipGet()
+  call s:clip_cache_store(l:t)
+  return l:t
+endfunction
+
+" 焦点回到 Vim（可能刚从别处复制东西）+ 启动时各预热一次
+augroup ec_clip_cache
+  autocmd!
+  autocmd FocusGained,VimEnter * call EcClipPrefetch()
+augroup END
 
 " 搜索提示行（/ ?）按 <C-p> 粘贴：优先「最近 yank 的内容」，
 " 没有 yank 记录就退回系统剪贴板；在 : 命令行里保持原生的「历史上一条」。
@@ -827,6 +1047,14 @@ endfunction
 
 function! EcClipSet(text) abort
   if a:text ==# '' | return | endif
+  " 自己刚写进去的内容就是最新的缓存，picker 立刻能用（不用等 FocusGained）
+  call s:clip_cache_store(a:text)
+
+  if has('clipboard')
+    call setreg('+', a:text)
+    echomsg '已复制到系统剪贴板（+clipboard 原生，' . strlen(a:text) . ' 字节）'
+    return
+  endif
 
   " 1) clip.exe 兜底：不依赖终端能力，保证粘贴一定读得到
   let l:tmp = tempname()
@@ -894,7 +1122,7 @@ let s:formatters = {
       \ 'cpp':  ['clangformat', 'clang-format'],
       \ }
 
-" g:ec_autoformat 的默认值在 conf/40-edit.vim 里设（那里是「选项」的家，
+" g:ec_autoformat 的默认值在第 5 节里设（那里是「选项」的家，
 " 而且能保证在任何时候都被定义，不用等本文件被 autoload）。
 
 " 手写兜底：把整个 buffer 喂给命令行工具，再整段换回来（保留视图）
@@ -922,7 +1150,7 @@ function! EcFmtRun(ft) abort
   let [l:neo, l:cmd] = s:formatters[a:ft]
   if !executable(split(l:cmd)[0]) | return 0 | endif
   if EcHasCmd('Neoformat')
-    " undojoin：让格式化不单独占一步撤销
+ " undojoin：让格式化不单独占一步撤销
     silent! undojoin
     execute 'Neoformat' l:neo
   else
@@ -957,7 +1185,7 @@ function! s:targets(mode, ...) abort
       call add(l:res, [l:l, 1, 1])
     endfor
   elseif a:mode ==# 'char'
-    " \V 之后的模式里只有反斜杠有特殊含义，所以要转义它
+ " \V 之后的模式里只有反斜杠有特殊含义，所以要转义它
     let l:pat = '\V' . escape(a:1, '\')
     let l:len = len(a:1)
     for l:l in range(l:top, l:bot)
@@ -1033,7 +1261,10 @@ function! EcUiMode() abort
   if l:m =~# '^n'              | return ['NORMAL',   'EcModeNormal']
   elseif l:m =~# '^i'          | return ['INSERT',   'EcModeInsert']
   elseif l:m =~# '^R'          | return ['REPLACE',  'EcModeReplace']
-  elseif l:m =~# '^[vV\<C-v>]' | return ['VISUAL',   'EcModeVisual']
+  " ⚠ 单引号串里 \<C-v> 是字面量，字符类里退化成 \ < C - v > 几个普通字符；
+ " mode(1) 对块选区返回的是原始 0x16 字节，必须用双引号串写 \x16 才匹配得上
+ " （2026-09-28 修：原来块选区会 fall through 显示成蓝色 NORMAL）。
+  elseif l:m =~# "^[vV\x16]"  | return ['VISUAL',   'EcModeVisual']
   elseif l:m =~# '^c'          | return ['COMMAND',  'EcModeCommand']
   elseif l:m =~# '^t'          | return ['TERMINAL', 'EcModeTerminal']
   endif
@@ -1044,12 +1275,12 @@ endfunction
 "
 " ⚠ 两个坑（原来这里两个都踩了，所以状态栏从来没显示过诊断数）：
 "   1) yegappan/lsp **没有** LspDiagCount 这个函数 —— 原来判断的就是它，
-"      于是整个分支永远不执行（死代码）。真正可用的是
-"      lsp#diag#DiagsGetErrorCount()（autoload/lsp/diag.vim）。
+" 于是整个分支永远不执行（死代码）。真正可用的是
+" lsp#diag#DiagsGetErrorCount()（autoload/lsp/diag.vim）。
 "   2) 它返回的键是 'Error' / 'Warn'，**不是** 'Warning'。
 "
 " 状态栏每次重绘都会被调用，所以这里不在状态栏里现算，而是缓存起来：
-" 由 User LspDiagsUpdated 和 BufEnter 触发刷新（见 conf/50-autocmds.vim），
+" 由 User LspDiagsUpdated 和 BufEnter 触发刷新（见第 7 节），
 " 状态栏只读两个脚本变量 —— 对前台零开销。
 let s:diag_buf  = -1
 let s:diag_err  = 0
@@ -1071,14 +1302,28 @@ function! EcUiDiagRefresh() abort
   let s:diag_warn = get(l:c, 'Warn', 0)
 endfunction
 
+" 诊断计数的文本 + 上色（E 用 EcDiagError、W 用 EcDiagWarn）。
+" 抽成纯函数是为了能自检 —— 以前 E 和 W 拼成一个串、统一按 EcDiagError 渲染，
+" 结果警告数也是红的（2026-09-28 拆开）。
+" 注意 EcDiagInfo 目前没有数据源（状态栏只统计 E/W），留作以后接 hint 用。
+function! EcDiagText(err, warn) abort
+  let l:s = ''
+  if a:err > 0
+    let l:s .= '%#EcDiagError# E' . a:err
+  endif
+  if a:warn > 0
+    let l:s .= '%#EcDiagWarn# W' . a:warn
+  endif
+  return l:s
+endfunction
+
 function! EcUiDiag() abort
+  " 返回值里带 %#组# —— 调用方必须把它**拼进**状态栏格式串（见 EcUiStatusline），
+  " 塞进 %{} 里不会被解析成高亮项。
   if s:diag_buf != bufnr('%')        " 缓存还没更新到当前 buffer
     return ''
   endif
-  let l:s = ''
-  if s:diag_err > 0  | let l:s .= ' E' . s:diag_err  | endif
-  if s:diag_warn > 0 | let l:s .= ' W' . s:diag_warn | endif
-  return l:s
+  return EcDiagText(s:diag_err, s:diag_warn)
 endfunction
 
 " LSP 进度（对应 Emacs 里 eglot 在 mode-line 上的 "eglot(...)" 指示）。
@@ -1088,11 +1333,11 @@ endfunction
 " 主循环就整段被冻住（实测：小工程 1.8-2s，工作区越大越久），冻结期间界面
 " 完全不能重绘。所以至少要把「正在忙什么」提前显示出来。
 "
-" ⚠ 两条实测出来的实现约束（详见文档第 10 节与 conf/50-autocmds.vim）：
+" ⚠ 两条实测出来的实现约束（详见文档第 10 节与第 7 节）：
 "   1) 不能给 User LspProgressUpdate 挂函数：插件是在 job 回调里 doautocmd 的，
-"      那个上下文里自动命令只要调用函数就抛 E20: Mark not set（一次冷启动 100+ 条）；
+" 那个上下文里自动命令只要调用函数就抛 E20: Mark not set（一次冷启动 100+ 条）；
 "   2) 不能靠常驻定时器轮询：定时器每跳一次就把 Vim 从等待里唤醒一次，终端上周期性
-"      刷光标序列，打扰前台安静（实测还会把 wait_quiet 类测试全拖慢到 25s 超时）。
+" 刷光标序列，打扰前台安静（实测还会把 wait_quiet 类测试全拖慢到 25s 超时）。
 " 最终：**事件驱动** —— 由 BufEnter / CursorHold / CursorHoldI 触发刷新
 "（updatetime=300ms，和诊断计数共用一条自动命令）。用户一停下来看代码指示器就更新；
 " 打开 rust 文件时 BufEnter 先画上「加载中」占位，冻结发生前它就在屏幕上了
@@ -1113,7 +1358,7 @@ function! EcUiProgressRefresh() abort
     if l:pct >= 0
       let l:s .= ' ' . l:pct . '%'
     else
-      " 没有百分比时用 message 的第一段（后面常跟一长串路径，会挤坏状态栏）
+ " 没有百分比时用 message 的第一段（后面常跟一长串路径，会挤坏状态栏）
       let l:msg = get(l:v, 'message', '')
       if l:msg !=# ''
         let l:s .= ' ' . split(substitute(l:msg, '/.*$', '', ''), ':')[0]
@@ -1122,8 +1367,10 @@ function! EcUiProgressRefresh() abort
     let s:prog = l:s
     break
   endfor
-  if strlen(s:prog) > 30
-    let s:prog = s:prog[:27] . '…'
+  " 按**字符**截断：s:prog[:27] 是按字节切的，进度标题里有中文时会从中间切开
+  " 一个 UTF-8 字符，状态栏上就是一个乱码方块。
+  if strchars(s:prog) > 30
+    let s:prog = strcharpart(s:prog, 0, 27) . '…'
   endif
   " 顶层文本要自己转义 %
   let s:prog = substitute(s:prog, '%', '%%', 'g')
@@ -1139,13 +1386,19 @@ function! EcUiProgressBusy(...) abort
   if get(g:, 'ec_lsp_busy', 0)
     if empty(s:busy_since)
       let s:busy_since = reltime()
-      " 一次性兜底：用户一直不操作（没有 CursorHold）时，5.5 秒后自动再评估一次，
-      " 把过期的占位清掉。一次性定时器没有周期唤醒的问题。
+ " 一次性兜底：用户一直不操作（没有 CursorHold）时，5.5 秒后自动再评估一次，
+ " 把过期的占位清掉。一次性定时器没有周期唤醒的问题。
       call timer_start(5500, 'EcUiProgressBusy')
     endif
     if reltimefloat(reltime(s:busy_since)) < 5.0
-      if s:prog !=# 'rust-analyzer 加载中…'
-        let s:prog = 'rust-analyzer 加载中…'
+ " 按 filetype 选服务器名：C/C++ 上是 clangd，写死 rust-analyzer 会误导。
+      let l:ft = &filetype
+      let l:name = l:ft ==# 'rust' ? 'rust-analyzer'
+            \ : (l:ft ==# 'c' || l:ft ==# 'cpp') ? 'clangd'
+            \ : '语言服务器'
+      let l:msg = l:name . ' 加载中…'
+      if s:prog !=# l:msg
+        let s:prog = l:msg
       endif
       return
     endif
@@ -1155,34 +1408,6 @@ function! EcUiProgressBusy(...) abort
   if s:prog !=# ''
     let s:prog = ''
   endif
-endfunction
-
-function! EcUiProgressRefresh() abort
-  let l:p = get(g:, 'LspProgress', {})
-  if empty(l:p)
-    let s:prog = ''
-    return
-  endif
-  for l:v in values(l:p)
-    let l:s = get(l:v, 'title', '')
-    let l:pct = get(l:v, 'percentage', -1)
-    if l:pct >= 0
-      let l:s .= ' ' . l:pct . '%'
-    else
-      " 没有百分比时用 message 的第一段（后面常跟一长串路径，会挤坏状态栏）
-      let l:msg = get(l:v, 'message', '')
-      if l:msg !=# ''
-        let l:s .= ' ' . split(substitute(l:msg, '/.*$', '', ''), ':')[0]
-      endif
-    endif
-    let s:prog = l:s
-    break
-  endfor
-  if strlen(s:prog) > 30
-    let s:prog = s:prog[:27] . '…'
-  endif
-  " 顶层文本要自己转义 %
-  let s:prog = substitute(s:prog, '%', '%%', 'g')
 endfunction
 
 " 返回状态栏片段：“ ⏳<在忙什么> ”，没有进度时返回空串。
@@ -1198,7 +1423,12 @@ function! EcUiStatusline() abort
   let l:s .= '%#EcModified#' . (&modified ? ' ●' : '  ')
   let l:s .= '%#EcReadOnly#' . (&readonly ? ' RO ' : '')
   let l:s .= '%#EcFileName# %f '
-  let l:s .= '%#EcDiagError#%{EcUiDiag()}'
+  " ⚠ 必须**直接拼接**，不能写成 '%{EcUiDiag()}'：Vim 不会再去解析 %{} 返回值里
+  " 的 %#组# 项（2026-10-25 在 Vim 9.2 上实测：状态栏上原样显示成
+  "  「%#EcDiagError# E2%#EcDiagWarn# W3」这串字面量，诊断数从来没画出来过）。
+  " 只有 %!函数 的返回值会被当成状态栏格式串解析。
+  " 分组由 EcUiDiag() 自己带（E/W 颜色不同），这里不要再套一层。
+  let l:s .= EcUiDiag()
   let l:s .= '%#EcLspProgress#' . EcUiProgress()
   let l:s .= '%='                                  " 以下右对齐
   let l:s .= '%#EcFileType# %{&filetype ==# "" ? "text" : &filetype} '
@@ -1233,7 +1463,7 @@ augroup ec_core
   autocmd BufReadPost *
         \ if line("'\"") > 1 && line("'\"") <= line("$") && &ft !~# 'commit'
         \ | execute 'normal! g`"' | endif
-  " 大文件降级（对应 Emacs my/optimize-for-large-file），实现在 autoload/ec.vim
+  " 大文件降级（对应 Emacs my/optimize-for-large-file），实现在第 6 节（ec.vim 部分）
   autocmd BufReadPost * call EcBigfile()
   " FileType 之后语法会被重新装上，这里再清一次
   autocmd Syntax * if get(b:, 'ec_bigfile', 0) | silent! syntax clear | endif
@@ -1250,7 +1480,7 @@ augroup ec_core
   " quickfix 里不要折行
   autocmd FileType qf setlocal nowrap
   " 诊断计数缓存：状态栏每次重绘都要读，所以不在状态栏里现算，
-  " 只在下面这几种时机查一次，实现见 autoload/ec/ui.vim。
+  " 只在下面这几种时机查一次，实现见第 6 节（ui.vim 部分）。
   "
   " 为什么用 CursorHold 而不是插件的 User LspDiagsUpdated 事件：
   " 实测那个事件不可靠 —— 有时根本不触发，有时触发了但在该事件里同步调用
@@ -1261,15 +1491,19 @@ augroup ec_core
   autocmd BufEnter,CursorHold,CursorHoldI * call EcUiDiagRefresh() | call EcUiProgressRefresh() | call EcUiProgressBusy()
   " LSP 进度指示器**不在这里挂会调用函数的自动命令**：插件是在 job 回调里
   " doautocmd 的，实测那个上下文里只要自动命令调用函数就抛 E20: Mark not set，
-  " 会把后续自动命令全打断。所以这两条**只做纯赋值**（记时间戳），
-  " 真正的状态栏更新交给 conf/20-ui.vim 启动的常驻轻量定时器，
-  " 细节见 autoload/ec/ui.vim。
+  " 会把后续自动命令全打断。所以这两条**只做纯赋值**（置「忙」标志），
+  " 真正的状态栏刷新是事件驱动的（BufEnter / CursorHold），细节见第 6 节 ui.vim。
+  "
+  " ⚠ User 事件的语法是 `autocmd User {事件名} {命令}` —— **中间不能写 `*`**。
+ " 原来这里写成 `autocmd User LspAttached * let g:ec_lsp_busy = 1`，
+ " 那个 `*` 会被当成「行范围」，每次 LSP 附加都报
+ " `E16: Invalid range: * let g:ec_lsp_busy = 1`（2026-09-28 修）。
   autocmd BufReadPost *.rs,*.c,*.cc,*.cpp,*.cxx,*.h,*.hpp let g:ec_lsp_busy = 1
-  autocmd User LspAttached * let g:ec_lsp_busy = 1
+  autocmd User LspAttached let g:ec_lsp_busy = 1
 augroup END
 
 " 保存时格式化（对应 apheleia-global-mode）。
-" 优先交给 neoformat，没有它时退回手写实现；实现在 autoload/ec/fmt.vim。
+" 优先交给 neoformat，没有它时退回手写实现；实现在第 6 节（fmt.vim 部分）。
 " a:1 显式给出 filetype —— *.h 这类扩展名 Vim 探测出的 filetype 可能是空的。
 augroup ec_format
   autocmd!
@@ -1326,7 +1560,7 @@ nnoremap <silent> <leader>sS :<C-u>call EcLsp('LspDocumentSymbol', 'ls')<CR>
 nnoremap <silent> <leader>yy :<C-u>call EcClipYankLine()<CR>
 xnoremap <silent> <leader>yy :<C-u>call EcClipCopy()<CR>
 nnoremap <silent> <leader>yp :<C-u>call EcClipPaste(0)<CR>
-xnoremap <silent> <leader>yp :<C-u>call EcClipPaste(0)<CR>
+xnoremap <silent> <leader>yp :<C-u>call EcClipReplace()<CR>
 nnoremap <silent> <leader>yr :<C-u>call EcClipReplace()<CR>
 xnoremap <silent> <leader>yr :<C-u>call EcClipReplace()<CR>
 
@@ -1337,14 +1571,19 @@ xnoremap <silent> <leader>yr :<C-u>call EcClipReplace()<CR>
 " · 命令行：<C-v>、<C-r>+、<C-r>* 都粘贴（多行会折成单行空格）
 " · 插入态：<C-r>+、<C-r>* 原样插入（多行保持多行）
 " · 命令行的 <C-v> 原本是「原样插入下一个字符」，想保留原生行为：
-"     let g:ec_clip_cmdline_ctrlv = 0
-if get(g:, 'ec_clip_cmdline_ctrlv', 1)
-  cnoremap <C-v> <C-r>=EcClipGetCmdline()<CR>
+" let g:ec_clip_cmdline_ctrlv = 0
+"
+" ⚠ 只在**没有** +clipboard 的 Vim 上占这些键：按文档建议装了 gvim（带剪贴板）
+" 之后，原生的 <C-r>+ / <C-r>* 又快又无损，不该被 powershell 桥接顶掉。
+if !has('clipboard')
+  if get(g:, 'ec_clip_cmdline_ctrlv', 1)
+    cnoremap <C-v> <C-r>=EcClipGetCmdline()<CR>
+  endif
+  cnoremap <C-r>+ <C-r>=EcClipGetCmdline()<CR>
+  cnoremap <C-r>* <C-r>=EcClipGetCmdline()<CR>
+  inoremap <C-r>+ <C-r>=EcClipGet()<CR>
+  inoremap <C-r>* <C-r>=EcClipGet()<CR>
 endif
-cnoremap <C-r>+ <C-r>=EcClipGetCmdline()<CR>
-cnoremap <C-r>* <C-r>=EcClipGetCmdline()<CR>
-inoremap <C-r>+ <C-r>=EcClipGet()<CR>
-inoremap <C-r>* <C-r>=EcClipGet()<CR>
 
 " 搜索提示行的粘贴（见 EcSearchPasteKeys）：/ 或 ? 里 <C-p> = 粘贴，
 " : 命令行里 <C-p> 仍是「历史上一条」；<C-n> / <Up> / <Down> 历史随时可用。
@@ -1368,7 +1607,7 @@ nnoremap <silent> <leader>lf :<C-u>call EcLsp('LspFormat',          'EcFormat')<
 nnoremap <silent> <leader>ld :<C-u>call EcLsp('LspGotoDefinition',  'tag')<CR>
 nnoremap <silent> <leader>lD :<C-u>call EcLsp('LspGotoDeclaration', 'tag')<CR>
 nnoremap <silent> <leader>li :<C-u>call EcLsp('LspGotoImpl',        'tag')<CR>
-nnoremap <silent> <leader>lr :<C-u>call EcLsp('LspShowReferences',  'grep!')<CR>
+nnoremap <silent> <leader>lr :<C-u>call EcLsp('LspShowReferences',  'call EcMissingFeature("LSP：显示引用")')<CR>
 nnoremap <silent> <leader>lh :<C-u>call EcLsp('LspHover',           'echo expand("<cword>")')<CR>
 nnoremap <silent> <leader>lo :<C-u>call EcLsp('LspOrganizeImports', 'LspCodeAction')<CR>
 nnoremap <silent> <leader>ls :<C-u>call EcLsp('LspSymbolSearch',    'EcTags')<CR>
@@ -1383,17 +1622,17 @@ nnoremap <silent> <leader>lv :<C-u>call EcDiagText('toggle')<CR>
 
 " ------------------------------------------------ 文件管理器 / 终端 -------
 " 对应 Emacs：SPC d d = dirvish、SPC d o = dirvish-quick-access、
-"            SPC e t = vterm、SPC e e = eshell、SPC e c = eshell-command
+" SPC e t = vterm、SPC e e = eshell、SPC e c = eshell-command
 nnoremap <silent> <leader>dd :<C-u>call EcExplore(0)<CR>
 nnoremap <silent> <leader>do :<C-u>call EcExplore(1)<CR>
 nnoremap <silent> <leader>ec :<C-u>call EcTerminal('cmd')<CR>
 nnoremap <silent> <leader>ee :<C-u>call EcTerminal('new')<CR>
 nnoremap <silent> <leader>et :<C-u>call EcTerminal('toggle')<CR>
 " 关闭浮窗终端。F 键在很多键盘/终端里按不到，所以关闭动作走 leader：
-"   SPC e k  关掉当前这个（连同终端进程）
-"   SPC e K  一次关掉所有浮窗
+" SPC e k 关掉当前这个（连同终端进程）
+" SPC e K 一次关掉所有浮窗
 " 在浮窗里时先按 <C-\><C-n> 回到普通模式再按；或者直接在浮窗 buffer 的
-" 普通模式下按 q（见 after/plugin 里的 FileType floaterm 处理）。
+" 普通模式下按 q（见第 10 节里的 FileType floaterm 处理）。
 " 另外在 shell 里按 <C-d>（EOF）也能让浮窗随进程退出而关闭。
 nnoremap <silent> <leader>ek :<C-u>call EcTerminal('kill')<CR>
 nnoremap <silent> <leader>eK :<C-u>call EcTerminal('killall')<CR>
@@ -1416,11 +1655,11 @@ nnoremap <silent> <leader>hr :<C-u>call EcReloadConfig()<CR>
 "   SPC j j = avy-goto-char-timer（跳到指定字符）
 "   SPC j w = avy-goto-word-1（跳到词首）
 "   SPC j l = avy-goto-line（跳到行）
-" 装了 easymotion 时由 after/plugin 换成它的实现，这里是无插件时的兜底。
+" 装了 easymotion 时由第 10 节换成它的实现，这里是无插件时的兜底。
 nnoremap <silent> <leader>jj :<C-u>call EcJumpGo('char')<CR>
 nnoremap <silent> <leader>jw :<C-u>call EcJumpGo('word')<CR>
 nnoremap <silent> <leader>jl :<C-u>call EcJumpGo('line')<CR>
-nnoremap <silent> <leader>jJ :<C-u>call EcPick('Jumps', 'jumps')<CR>
+nnoremap <silent> <leader>jJ :<C-u>call EcPick('Jumps', 'call EcMissingFeature("fzf：跳转列表（原生等价物是 :jumps）")')<CR>
 
 " 普通模式只有「扩展」有意义（原来 xx / xX 在普通模式是同一个动作）
 nnoremap <silent> <leader>xx :<C-u>call EcRegionEx(0)<CR>
@@ -1439,7 +1678,7 @@ nnoremap <silent> <leader>qA :<C-u>quitall!<CR>
 
 " ------------------------------------------- 与 Vim 原生对齐（不再抢原生键）----
 " gc / gcc / 可视 gc = vim-commentary 的注释操作符（原生手感，且能被 . 重复）。
-" 取消搜索高亮不占键位了：改用 Vim 自带的 nohlsearch 包（见 conf/30-search.vim），
+" 取消搜索高亮不占键位了：改用 Vim 自带的 nohlsearch 包（见第 4 节），
 " 空闲 updatetime 或进插入模式时自动清。
 "
 " C-s：Vim 原生 C-s 在终端里是 XOFF（会把终端冻住），这里接管成「前向搜索」。
@@ -1448,7 +1687,7 @@ nnoremap <silent> <C-s> /
 " gi / go / Y 都不再映射，交回 Vim：
 "   gi = 回到上次插入位置（原生，很实用）
 "   go = 跳到第 N 个字节（原生，罕用）
-"   Y  = 整行复制（Vim 9.2 原生就是 yy，见 :h Y）
+" Y = 整行复制（Vim 9.2 原生就是 yy，见 :h Y）
 " 改动列表 g; / g, 、跳转列表 C-o / C-i 、buffer 切换 <C-^> / :bn / :bp 也都是原生键。
 " 顺带：<Tab> 与 <C-i> 是同一个键码，所以 <Tab> 一直没被拿来做 buffer 切换。
 
@@ -1462,8 +1701,13 @@ inoremap <expr> <C-y> pumvisible() ? "\<C-y>" : "\<C-r>\""
 inoremap <C-k> <C-o>D
 inoremap <expr> <Tab>   pumvisible() ? "\<C-n>" : "\<Tab>"
 inoremap <expr> <S-Tab> pumvisible() ? "\<C-p>" : "\<S-Tab>"
-inoremap <expr> <CR>    pumvisible() ? "\<C-y>" : "\<CR>"
+" ⚠ <CR> 不要在这里自己 map：括号里回车要「三行展开 + 自动缩进」，
+"   那条映射定义在插件加载之后（第 10 节的 EcBracketCr()）——
+"   因为 LSP 插件会给附加了服务器的 buffer 装 buffer-local <CR>，必须晚于它。
+"   以前这里写死成 plain <CR>，把括号展开整个架空，表现就是「在 {} () [] 里回车不缩进」。
 inoremap <C-Space> <C-x><C-o>
+" 有些终端把 Ctrl+Space 发成 NUL（^@），那条 <C-Space> 就永远不触发；这是同一个键的另一半
+inoremap <C-@> <C-x><C-o>
 
 " ---------------------------------------------------------------- 小工具 ----
 nnoremap <A-j> :m .+1<CR>==
@@ -1479,7 +1723,7 @@ vnoremap > >gv
 " execute 的字符串里 s: / <SID> 不会被解析，所以给「兜底动作」包一层命令：
 "   <leader>lf 的兜底 EcFormat、<leader>ls 的兜底 EcTags
 command! -bar EcFormat call EcFormatBuffer()
-command! -bar EcTags   call EcPick('BTags', 'ls')
+command! -bar EcTags   call EcPick('BTags', 'call EcMissingFeature("fzf：buffer 标签补全")')
 
 " ==========================================================================
 " 9. 插件声明与插件选项（原 plugins.vim）
@@ -1530,11 +1774,20 @@ else
 " 这里改回普通的 down / up，与 Emacs 的 consult-buffer / vertico 里 C-n / C-p 一致。
 " 对所有 fzf 选择器（:Files :Buffers :Rg :BLines :History …）都生效。
 " ⚠ FZF_DEFAULT_OPTS 里的选项值**必须加引号**（fzf 是 shell 式切分）：
-"    `--bind=x` / `--bind x` 这两种写法会被**整条忽略**（实测 fzf 0.72），只有
-"    `--bind='x'` 生效。原来这里就是漏了引号，等于没设（好在 fzf 默认就是
-"    ctrl-n=down / ctrl-p=up，所以一直没人发现）。
-let $FZF_DEFAULT_OPTS = $FZF_DEFAULT_OPTS
-      \ . " --bind='ctrl-n:down,ctrl-p:up,ctrl-d:half-page-down,ctrl-u:half-page-up'" 
+" `--bind=x` / `--bind x` 这两种写法会被**整条忽略**（实测 fzf 0.72），只有
+" `--bind='x'` 生效。原来这里就是漏了引号，等于没设（好在 fzf 默认就是
+" ctrl-n=down / ctrl-p=up，所以一直没人发现）。
+" 基准只记一次（全局变量，:source 重载时不会被重置）——
+" 否则每次重载都会往 $FZF_DEFAULT_OPTS 上再叠一份，越积越长（2026-09-28 修）。
+" 分两层存：base 是环境原始值，vimrc_opts 是「环境 + 本文件的 bind」。
+" ⚠ 这两层必须分开 —— EcFzfClipBind() 重建 $FZF_DEFAULT_OPTS 时要以 vimrc_opts 为基准，
+"   否则每次开 picker 都会把下面这组自定义键位弄丢（2026-09-28 修）。
+if !exists('g:ec_fzf_base_opts')
+  let g:ec_fzf_base_opts = $FZF_DEFAULT_OPTS
+endif
+let g:ec_fzf_vimrc_opts = g:ec_fzf_base_opts
+      \ . " --bind='ctrl-n:down,ctrl-p:up,ctrl-d:half-page-down,ctrl-u:half-page-up'"
+let $FZF_DEFAULT_OPTS = g:ec_fzf_vimrc_opts 
 
 let g:fzf_layout         = { 'down': '40%' }   " 贴底弹出，像 minibuffer
 let g:fzf_preview_window = []                  " 关预览（对应 dirvish-preview-dispatchers nil）
@@ -1562,7 +1815,7 @@ let g:fzf_colors = {
 " ---- 编辑增强 ----
 " lexima（对应 electric-pair-mode）：g:lexima_no_default_rules = 1 ——
 " 它的默认规则太宽（还含反引号、markdown 三引号、空格规则、endwise 补 end），
-" 我们在 after/plugin 里按 Emacs 的 electric-pair-pairs 重新装一遍收窄后的规则。
+" 我们在第 10 节里按 Emacs 的 electric-pair-pairs 重新装一遍收窄后的规则。
 let g:lexima_no_default_rules = 1
 " 补全菜单弹出时 <CR> 确认候选（与 corfu 一致）。Vim 下默认是 0，这里显式打开。
 let g:lexima_accept_pum_with_enter = 1
@@ -1585,7 +1838,7 @@ let g:VM_mouse_mappings = 1
 " （无选项）
 
 " ---- 【5】ojroques/vim-oscyank：OSC 52 剪贴板（UTF-8 无损） ----
-" 提示信息由 autoload/ec/clip.vim 负责，这里关掉插件自己的消息；
+" 提示信息由第 6 节（clip.vim 部分）负责，这里关掉插件自己的消息；
 " 不设长度上限（Windows Terminal 支持长序列），也不做 trim（Emacs 不 trim）。
 let g:oscyank_silent     = 1
 let g:oscyank_max_length = 0
@@ -1610,14 +1863,14 @@ let g:neoformat_only_msg_on_error = 1          " 只在出错时提示（对应 
 " 语言服务器的 nice 优先级（0 = 不降优先级）。
 " 实测 rust-analyzer 附加到 Cargo 工程后会冲到 200%+ CPU、约 2GB 内存并持续
 " 索引几十秒；用 nice 把它压到后台，前台编辑不受影响。只改调度优先级，
-" 不影响任何 LSP 功能。用法见 after/plugin/zz-emacs-compat.vim 第 4 节。
+" 不影响任何 LSP 功能。用法见本文件第 10 节。
 let g:ec_lsp_nice = get(g:, 'ec_lsp_nice', 10)
 
 " ---- 【4】easymotion/vim-easymotion：对应 avy ----
 " g:EasyMotion_do_mapping = 0 是关键：关掉它自带的全部默认映射，
 " 因为它的默认前缀 <Leader><Leader> 正好等于我们的 <Space><Space>
 "（M-x 命令面板），不关会把命令面板顶掉。
-" <Plug>(easymotion-*) 不受这个开关影响，我们在 after/plugin 里按
+" <Plug>(easymotion-*) 不受这个开关影响，我们在第 10 节里按
 " Emacs 的 SPC j 键位自己绑。
 let g:EasyMotion_do_mapping = 0
 let g:EasyMotion_keys = 'asdfghjklqwertyuiopzxcvbnm'  " 与 autoload/ec/jump.vim 的 s:keys 一致
@@ -1640,7 +1893,7 @@ let g:dirvish_mode = ':sort ,^.*[\/],'    " 目录在前、文件在后
 " g:nrrw_rgn_nomap_nr / _Nr = 1：禁用插件自带的 <Leader>nr / <Leader>Nr。
 " 它自带的是「<Plug> + opfunc + g@」形式，需要后续输入，经 <leader> 前缀
 "（which-key 的输入循环）执行不可靠 —— 和 easymotion 同一个坑。
-" 我们在 after/plugin 里用 :call 命令形式自己绑。
+" 我们在第 10 节里用 :call 命令形式自己绑。
 " 注意 g:nrrw_rgn_incr 是「窄窗尺寸的调整步长」，不是「增量同步」，别设错。
 let g:nrrw_rgn_nomap_nr = 1
 let g:nrrw_rgn_nomap_Nr = 1
@@ -1666,13 +1919,37 @@ let g:floaterm_keymap_new    = '<F9>'
 " 绑上之后：<Esc> 回普通模式 → leader 全部可用 → i / a 继续往 shell 打字。
 " ⚠ 代价：<Esc> 不再送给浮窗里运行的程序。如果要在浮窗里跑自己要吃 <Esc> 的
 "   TUI 程序（嵌套 vim / hx / lazygit / htop 等），把这里设成 0 即可：
-"       let g:ec_floaterm_esc = 0
+" let g:ec_floaterm_esc = 0
 "   那样就仍用 Vim 自带的 <C-\><C-n> 离开终端模式。
 let g:ec_floaterm_esc = get(g:, 'ec_floaterm_esc', 1)
 
 " ============================================================ 插件清单 ======
 " --- 自举 2/2：插件目录缺失时自动安装；装完把本地补丁打回去并重新加载配置 ---
 " （首次启动、或 ~/.vim/plugged 被删掉之后会自动走到这里）
+" LSP 补丁自愈：:PlugUpdate 会把打过补丁的文件换成上游新版，补丁就丢了。
+" 快路径只读一个文件找标记（约 1ms，不影响启动），只有真丢了才去跑 git apply。
+" 补丁是在 Vim 启动后才打上的，所以要重启 Vim 才生效 —— 这里会明确提示。
+function! EcEnsureLspPatch() abort
+  let l:f = expand('~/.vim/plugged/lsp/autoload/lsp/lspserver.vim')
+  let l:patch = expand('~/vim-recon/lsp-async-pull.patch')
+  if !filereadable(l:f) || !filereadable(l:patch)
+    return
+  endif
+  for l:line in readfile(l:f, '', 4000)
+    if l:line =~# 'PullDiagReplyCb'
+ " 补丁在，什么都不做
+      return
+    endif
+  endfor
+  let l:r = system('cd ' . shellescape(expand('~/.vim/plugged/lsp'))
+        \ . ' && git apply ' . shellescape(l:patch) . ' 2>&1')
+  if v:shell_error == 0
+    echomsg 'LSP 异步补丁已重新应用（下次启动 Vim 生效）'
+  else
+    echomsg 'LSP 补丁应用失败：' . substitute(l:r, '\n', ' ', 'g')
+  endif
+endfunction
+
 function! EcReapplyLocalPatches() abort
   " yegappan/lsp：把「拉诊断改成异步」的本地 patch 打回去
   " （插件是 git clone 来的，重新安装后补丁没了，这里自动重放）
@@ -1725,22 +2002,22 @@ call plug#end()
     echomsg printf('检测到 %d 个插件未安装，正在自动下载安装（首次需要网络，请稍候）…',
           \ len(s:missing))
     redraw
-    " 为什么不用 :PlugInstall：
-    "   · 无界面模式（-es / 非交互）下它会开窗口做进度显示，直接失败，
-    "     还会打断后续的 VimEnter 自动命令（实测整个启动流程就此中断）；
-    "   · 子进程 `vim +PlugInstall +qall` 同样静默失败（实测 3 秒返回、0 个插件）。
-    " 所以这里直接用 g:plugs 里记录的仓库地址 git clone —— headless 与交互都可靠。
-    " 目录地址由 plug#begin/end 事先写进 runtimepath，克隆完本会话即可加载。
+ " 为什么不用 :PlugInstall：
+ " · 无界面模式（-es / 非交互）下它会开窗口做进度显示，直接失败，
+ " 还会打断后续的 VimEnter 自动命令（实测整个启动流程就此中断）；
+ " · 子进程 `vim +PlugInstall +qall` 同样静默失败（实测 3 秒返回、0 个插件）。
+ " 所以这里直接用 g:plugs 里记录的仓库地址 git clone —— headless 与交互都可靠。
+ " 目录地址由 plug#begin/end 事先写进 runtimepath，克隆完本会话即可加载。
     let s:fail = []
     for [s:name, s:info] in items(s:missing)
-      " vim-plug 把 GitHub 地址存成 https://git::@github.com/...（内部形式），还原成普通地址
+ " vim-plug 把 GitHub 地址存成 https://git::@github.com/...（内部形式），还原成普通地址
       let s:url = substitute(s:info.uri, 'https://git::@', 'https://', '')
       let s:branch = empty(s:info.branch) ? ''
             \ : '--branch ' . shellescape(s:info.branch) . ' '
       if !isdirectory(s:info.dir)
         call mkdir(s:info.dir, 'p')
       endif
-      " 先试浅克隆（快）；有些仓库/代理不支持，失败就退完整克隆
+ " 先试浅克隆（快）；有些仓库/代理不支持，失败就退完整克隆
       call system('git clone --quiet --depth 1 ' . s:branch
             \ . shellescape(s:url) . ' ' . shellescape(s:info.dir) . ' 2>&1')
       if v:shell_error != 0
@@ -1757,7 +2034,7 @@ call plug#end()
     else
       echomsg '这些插件没装成功：' . join(s:fail, ', ') . '（检查网络 / git）'
     endif
-    " 新克隆下来的 lsp 是干净的，把我们本地的异步 patch 打回去
+ " 新克隆下来的 lsp 是干净的，把我们本地的异步 patch 打回去
     call EcReapplyLocalPatches()
   endif
 endif
@@ -1770,173 +2047,186 @@ endif
 
 " ---- 4) LSP（对应 eglot + rust-analyzer / clangd）----
   " ⚠ 判断顺序非常关键（2026-09-27 用 --startuptime + profile 定位）：
-  "   PATH 里混进了 23 条 /mnt/c/... （Windows 盘，走 9p）路径，而 rust-analyzer
-  "   **并不在 PATH 里** —— executable('rust-analyzer') 要把整条 PATH 扫完，
-  "   实测一次 54.2ms（executable('clangd') 因为 /usr/bin 排在前面只要 0.025ms）。
-  "   vim 启动 90ms 里 55ms 就是这么来的。先查已知的绝对路径（一次 stat，0.015ms），
-  "   查不到再退回扫 PATH：启动 90ms → 39ms（实测三次：41/39/37ms）。
-  function! s:exe(name, fallback) abort
-    if a:fallback !=# '' && executable(a:fallback) | return a:fallback | endif
-    if executable(a:name) | return a:name | endif
-    return ''
-  endfunction
+ " PATH 里混进了 23 条 /mnt/c/... （Windows 盘，走 9p）路径，而 rust-analyzer
+ " **并不在 PATH 里** —— executable('rust-analyzer') 要把整条 PATH 扫完，
+ " 实测一次 54.2ms（executable('clangd') 因为 /usr/bin 排在前面只要 0.025ms）。
+ " vim 启动 90ms 里 55ms 就是这么来的。先查已知的绝对路径（一次 stat，0.015ms），
+ " 查不到再退回扫 PATH：启动 90ms → 39ms（实测三次：41/39/37ms）。
+function! s:exe(name, fallback) abort
+  if a:fallback !=# '' && executable(a:fallback) | return a:fallback | endif
+  if executable(a:name) | return a:name | endif
+  return ''
+endfunction
 
-  " ⚠ autoHighlight 必须是 false（插件默认也是 false）：
-  "   它开着时插件会给每个 buffer 装一条
-  "     CursorMoved → LspDocHighlightClear | LspDocHighlight(bnr, "silent")
-  "   于是**每移动一次光标**就发一个 textDocument/documentHighlight 请求；
-  "   而 DocHighlight 在发请求前会先 listener_flush() 把挂起的改动推给服务器，
-  "   rust-analyzer 一旦发现请求期间的文档版本变了就回 ContentModified(-32801)，
-  "   插件在 AsyncRpcCb 里对**所有**异步请求错误都无条件
-  "   ProcessLspServerError 报错（它自己的 "silent" 只挡得住
-  "   DocHighlightReply 那条 "Document highlight failed:"），
-  "   于是打开/编辑文件时就会蹦出：
-  "     request textDocument/documentHighlight failed
-  "       (content modified, error = ContentModified)
-  "   关掉之后这个请求根本不会发出，报错随之消失，也省掉每次移光标的
-  "   一次 LSP 往返。想临时看一眼同名符号可以用 :LspHighlight（手动触发时才报错）。
-  "   顺带一提：Emacs 那边也没开任何「高亮同名符号」的功能，关掉更贴近 Emacs。
-  "
-  " 【错误提示文本】对应 Emacs 的 eldoc：错误内容回显在底部那一行（就是敲 : 命令的
-  " 消息/输入区），光标离开那一行就自动清掉；符号列的 E> 和出错代码段的 undercurl 照旧。
-  " 插件里这几个选项默认**全是关的**，这就是「只有 E> 标记、看不到错误内容」的原因：
-  "   showDiagOnStatusLine     光标停在有诊断的行上时，把完整 message（带错误码，如
-  "                            [E0308]）回显到底部消息区 —— 默认开。
-  "   showDiagWithVirtualText  把 message 当虚拟文本画进 buffer —— 默认关（会把下面的
-  "                            代码顶下去），想临时开用 <leader>lv，想常开就
-  "                            let g:ec_diag_text = v:true。
-  "   diagVirtualTextAlign     行内文字的位置：above=行上方（推荐）/ below=行下方 / after=行尾。
-  "                            实测 after 会把同一行上的所有诊断（含 hint）都堆到代码行尾、
-  "                            message 里的换行被拍平、长消息被窗口右边缘截断/折行（还会
-  "                            带上 showbreak 的 ↪）；above/below 每条诊断独占一个虚拟行、
-  "                            完整显示、代码行原样不动。
-  "   diagVirtualTextWrap      插件默认 default（above/below 模式会截断），设 wrap 显示完整内容。
-  "   highlightDiagInline      插件默认 true：出错的那段代码本身加 undercurl。
-  "                            前提是主题里定义了 LspDiagInline* —— 原来 colors 文件里
-  "                            写的是 Neovim 的 DiagnosticUnderline*，插件根本不认（已修）。
-  " ⚠ showDiagOnStatusLine 只在 buffer 附加到 LSP 服务器时（diag#BufferInit）注册
-  "   CursorMoved 自动命令，所以改这个开关要**重启 vim** 才生效（行内文字那个随时可切）。
-  " 太长被截断的 message 想看全：:LspDiag current（弹窗），或 SPC l e 列出全部诊断。
-  let g:ec_diag_align = get(g:, 'ec_diag_align', 'above')
-  let g:ec_diag_text  = get(g:, 'ec_diag_text', v:false)
-  let g:ec_diag_echo  = get(g:, 'ec_diag_echo', v:true)
+" ⚠ autoHighlight 必须是 false（插件默认也是 false）：
+"   它开着时插件会给每个 buffer 装一条
+" CursorMoved → LspDocHighlightClear | LspDocHighlight(bnr, "silent")
+"   于是**每移动一次光标**就发一个 textDocument/documentHighlight 请求；
+"   而 DocHighlight 在发请求前会先 listener_flush() 把挂起的改动推给服务器，
+"   rust-analyzer 一旦发现请求期间的文档版本变了就回 ContentModified(-32801)，
+"   插件在 AsyncRpcCb 里对**所有**异步请求错误都无条件
+"   ProcessLspServerError 报错（它自己的 "silent" 只挡得住
+"   DocHighlightReply 那条 "Document highlight failed:"），
+"   于是打开/编辑文件时就会蹦出：
+" request textDocument/documentHighlight failed
+" (content modified, error = ContentModified)
+"   关掉之后这个请求根本不会发出，报错随之消失，也省掉每次移光标的
+"   一次 LSP 往返。想临时看一眼同名符号可以用 :LspHighlight（手动触发时才报错）。
+"   顺带一提：Emacs 那边也没开任何「高亮同名符号」的功能，关掉更贴近 Emacs。
+"
+" 【错误提示文本】对应 Emacs 的 eldoc：错误内容回显在底部那一行（就是敲 : 命令的
+" 消息/输入区），光标离开那一行就自动清掉；符号列的 E> 和出错代码段的 undercurl 照旧。
+" 插件里这几个选项默认**全是关的**，这就是「只有 E> 标记、看不到错误内容」的原因：
+" showDiagOnStatusLine 光标停在有诊断的行上时，把完整 message（带错误码，如
+" [E0308]）回显到底部消息区 —— 默认开。
+" showDiagWithVirtualText 把 message 当虚拟文本画进 buffer —— 默认关（会把下面的
+" 代码顶下去），想临时开用 <leader>lv，想常开就
+" let g:ec_diag_text = v:true。
+" diagVirtualTextAlign 行内文字的位置：above=行上方（推荐）/ below=行下方 / after=行尾。
+" 实测 after 会把同一行上的所有诊断（含 hint）都堆到代码行尾、
+" message 里的换行被拍平、长消息被窗口右边缘截断/折行（还会
+" 带上 showbreak 的 ↪）；above/below 每条诊断独占一个虚拟行、
+" 完整显示、代码行原样不动。
+" diagVirtualTextWrap 插件默认 default（above/below 模式会截断），设 wrap 显示完整内容。
+" highlightDiagInline 插件默认 true：出错的那段代码本身加 undercurl。
+" 前提是主题里定义了 LspDiagInline* —— 原来 colors 文件里
+" 写的是 Neovim 的 DiagnosticUnderline*，插件根本不认（已修）。
+" ⚠ showDiagOnStatusLine 只在 buffer 附加到 LSP 服务器时（diag#BufferInit）注册
+"   CursorMoved 自动命令，所以改这个开关要**重启 vim** 才生效（行内文字那个随时可切）。
+" 太长被截断的 message 想看全：:LspDiag current（弹窗），或 SPC l e 列出全部诊断。
+let g:ec_diag_align = get(g:, 'ec_diag_align', 'above')
+let g:ec_diag_text  = get(g:, 'ec_diag_text', v:false)
+let g:ec_diag_echo  = get(g:, 'ec_diag_echo', v:true)
 
-  " 【死配置清理 2026-09-28】下面 5 个键在当前插件版本里已不存在（上游删除/改名）：
-  "   autoDiagnostic            拉诊断根本没有开关，这个键毫无用途
-  "   completionPumWidth        补全菜单宽度选项已被删除
-  "   hoverPopupBorder          被统一的 popupBorder 取代（默认 false = 无边框，正合原意）
-  "   completionPopupBorder     同上
-  "   showCompletionDocumentation  补全文档现在总是显示
-  " 它们会被 LspOptionsSet 静默并进 dict 但完全无效，留着只会误导人。
+" 【死配置清理 2026-09-28】下面 5 个键在当前插件版本里已不存在（上游删除/改名）：
+" autoDiagnostic 拉诊断根本没有开关，这个键毫无用途
+" completionPumWidth 补全菜单宽度选项已被删除
+" hoverPopupBorder 被统一的 popupBorder 取代（默认 false = 无边框，正合原意）
+" completionPopupBorder 同上
+" showCompletionDocumentation 补全文档现在总是显示
+" 它们会被 LspOptionsSet 静默并进 dict 但完全无效，留着只会误导人。
+" ⚠ noNewlineInCompletion 必须为 true：LSP 插件会给「附加了语言服务器的 buffer」装一条
+"   buffer-local <CR>（completion.vim: inoremap <expr> <buffer> <CR> pumvisible() ? "\<C-Y>\<CR>" : "\<CR>"），
+"   buffer-local 优先级高于全局映射 → 会把 lexima 的 newline 规则（{} () [] 里回车
+"   自动展开三行 + 缩进）整个架空。关掉之后 <CR> 回到 lexima：补全菜单里回车仍是
+"   确认候选，其余情况走括号展开规则。
+" ⚠ 另一个坑：字典字面量里**不能夹 `"` 注释行**（Vim 会报 E723: Missing end of
+"   Dictionary 并让整个 let 失败）。注释一律写在外面。
 let g:lsp_options = {
-      \ 'autoComplete': v:true,
-      \ 'autoHighlight': v:false,
-      \ 'autoHighlightDiags': v:true,
-      \ 'autoPopulateDiags': v:false,
-      \ 'formatFallback': v:true,
-      \ 'completionTextEdit': v:true,
-      \ 'completionMatcher': 'fuzzy',
-      \ 'diagSignErrorText': 'E>',
-      \ 'diagSignWarningText': 'W>',
-      \ 'diagSignInfoText': 'I>',
-      \ 'diagSignHintText': 'H>',
-      \ 'diagVirtualTextAlign': g:ec_diag_align,
-      \ 'diagVirtualTextWrap': 'wrap',
-      \ 'echoSignature': v:false,
-      \ 'hideDisabledCodeActions': v:false,
-      \ 'hoverFallback': v:true,
-      \ 'hoverInPreview': v:true,
-      \ 'outlineWinSize': 25,
-      \ 'showDiagInBalloon': v:true,
-      \ 'showDiagInPopup': v:true,
-      \ 'showDiagWithVirtualText': g:ec_diag_text,
-      \ 'showDiagOnStatusLine': g:ec_diag_echo,
-      \ 'showSignature': v:true,
-      \ 'snippetSupport': v:true,
-      \ 'useBufferCompletion': v:true,
-      \ 'useQuickfixForLocations': v:false }
+    \ 'autoComplete': v:true,
+    \ 'autoHighlight': v:false,
+    \ 'autoHighlightDiags': v:true,
+    \ 'autoPopulateDiags': v:false,
+    \ 'formatFallback': v:true,
+    \ 'completionTextEdit': v:true,
+    \ 'completionMatcher': 'fuzzy',
+    \ 'noNewlineInCompletion': v:true,
+    \ 'diagSignErrorText': 'E>',
+    \ 'diagSignWarningText': 'W>',
+    \ 'diagSignInfoText': 'I>',
+    \ 'diagSignHintText': 'H>',
+    \ 'diagVirtualTextAlign': g:ec_diag_align,
+    \ 'diagVirtualTextWrap': 'wrap',
+    \ 'echoSignature': v:false,
+    \ 'hideDisabledCodeActions': v:false,
+    \ 'hoverFallback': v:true,
+    \ 'hoverInPreview': v:true,
+    \ 'outlineWinSize': 25,
+    \ 'showDiagInBalloon': v:true,
+    \ 'showDiagInPopup': v:true,
+    \ 'showDiagWithVirtualText': g:ec_diag_text,
+    \ 'showDiagOnStatusLine': g:ec_diag_echo,
+    \ 'showSignature': v:true,
+    \ 'snippetSupport': v:true,
+    \ 'useBufferCompletion': v:true,
+    \ 'useQuickfixForLocations': v:false }
 
-  " 【性能】语言服务器放到低优先级跑，让它在后台默默索引、不跟前台抢资源。
-  " 实测：rust-analyzer 附加到工程后会冲到 200%+ CPU、约 2GB 内存，索引持续
-  " 几十秒（Vim 自己的输入回显一直是 21ms，卡的是整机资源被抢）。
-  " nice 只改调度优先级、不影响任何 LSP 功能；g:ec_lsp_nice = 0 可关掉。
-  "
-  " 实现方式：插件是拿 [path] + args 直接 job_start 的，所以把 path 换成 nice、
-  " 把真正的服务器路径放到 args 末尾即可。注意插件会检查 server.path 是否
-  " 可执行，而且本机的 nice 在 /usr/sbin/nice（不在 /usr/bin）。
-  " 副作用：:LspShowAllServers 里显示的 Server Path 会是 nice 的路径。
-  function! s:with_nice(path, args) abort
-    let l:n = get(g:, 'ec_lsp_nice', 10)
-    if l:n > 0 && executable('/usr/sbin/nice')
-      return #{ path: '/usr/sbin/nice',
-            \   args: ['-n', string(l:n)] + a:args + [a:path] }
-    endif
-    return #{ path: a:path, args: a:args }
-  endfunction
-
-  " 说明：原来这里的 syncInit: v:false 已删除 —— 插件里 syncInit 默认就是 false
-  "（autoload/lsp/lsp.vim），而且只有 inlay hints 读它，写了等于没写。
-  let s:servers = []
-  let s:ra = s:exe('rust-analyzer', '/usr/lib/rustup/bin/rust-analyzer')
-  if s:ra !=# ''
-    let s:w = s:with_nice(s:ra, [])
-    " ⚠ 不要给 rust-analyzer 传 workspaceConfig（2026-09-27 实测回退）：
-    "   试过 {'check': {'workspace': v:false}} 和 {'cachePriming': {'enable': v:false}}
-    "   —— 想让服务器少干活、少卡前台。结果 A/B 三次复现：**任一个开关都会让
-    "   rust-analyzer 不再发布诊断**（符号列 E> 60 秒不出现；什么都不传 1.8 秒就出）。
-    "   诊断是刚需，所以保持默认；「打开 rs 文件卡一下」改由状态栏进度提示解决
-    "   （见 autoload/ec/ui.vim 与文档第 10 节）。
-    call add(s:servers, #{
-          \ name: 'rust-analyzer',
-          \ filetype: ['rust'],
-          \ path: s:w.path,
-          \ args: s:w.args,
-          \ })
+" 【性能】语言服务器放到低优先级跑，让它在后台默默索引、不跟前台抢资源。
+" 实测：rust-analyzer 附加到工程后会冲到 200%+ CPU、约 2GB 内存，索引持续
+" 几十秒（Vim 自己的输入回显一直是 21ms，卡的是整机资源被抢）。
+" nice 只改调度优先级、不影响任何 LSP 功能；g:ec_lsp_nice = 0 可关掉。
+"
+" 实现方式：插件是拿 [path] + args 直接 job_start 的，所以把 path 换成 nice、
+" 把真正的服务器路径放到 args 末尾即可。注意插件会检查 server.path 是否
+" 可执行，而且本机的 nice 在 /usr/sbin/nice（不在 /usr/bin）。
+" 副作用：:LspShowAllServers 里显示的 Server Path 会是 nice 的路径。
+function! s:with_nice(path, args) abort
+  let l:n = get(g:, 'ec_lsp_nice', 10)
+  if l:n > 0 && executable('/usr/sbin/nice')
+    return #{ path: '/usr/sbin/nice',
+          \   args: ['-n', string(l:n)] + a:args + [a:path] }
   endif
-  let s:cd = s:exe('clangd', '/usr/bin/clangd')
-  if s:cd !=# ''
-    let s:w = s:with_nice(s:cd, ['--background-index'])
-    call add(s:servers, #{
-          \ name: 'clangd',
-          \ filetype: ['c', 'cpp'],
-          \ path: s:w.path,
-          \ args: s:w.args,
-          \ })
-  endif
-  if !empty(s:servers)
-    let g:lsp_servers = s:servers
-  endif
+  return #{ path: a:path, args: a:args }
+endfunction
 
-  " ---- 4.1) 把 Vim 的原生接口接到 LSP 上（比记 <leader>l* 更 Vim）----
-  " 下面这些都是 Vim 自己的机制，接上之后手感就是「原生 Vim + 语言服务器」：
-  "   'tagfunc'  → C-] / g] / :tjump / :tag 跳定义
-  "                （definitionFallback 保持默认 false：这条路上没有 tags 文件工作流，
-  "                 打开它会让「没有 LSP 的 buffer 里按 <leader>ld」去 tjump，
-  "                 直接抛 E433: No tags file + E426: Tag not found）
-  "   K          → LSP hover；没有内容时 hoverFallback 会让插件执行原生 K（man 等）
-  "   'omnifunc' → 插件自己会给附加了服务器的 buffer 设 g:LspOmniFunc，即 <C-x><C-o>
-  "                （所以全局的 syntaxcomplete#Complete 已删，见 conf/40-edit.vim）
-  " ⚠ 格式化**没有**接 gq / 'formatexpr'，这是实测结论（2026-09-27）：
-  "   · 插件文档给的两条路是 setlocal formatexpr=lsp#lsp#FormatExpr() 和
-  "     nnoremap gq <Plug>(LspFormat)；
-  "   · 前者走 CurbufGetServerChecked('documentRangeFormatting')，实测返回 1（=未格式化），
-  "     Vim 于是回退到内置 gq，等于什么都没做；
-  "   · 后者走 DocRangeFormat，同样要 documentRangeFormatting，实测 rust-analyzer
-  "     只提供 documentFormatting（BufLspServerGet 对 range 返回空），于是只打印
-  "     "Formatting unsupported; falling back to built-in."；
-  "   · 只有不带范围的 :LspFormat 走 documentFormatting，实测可用（<leader>lf 就是它；
-  "     另外保存时也会经 EcFmtSave → rustfmt 格式化）。
-  " 结论：gq 保持 Vim 原生（只管按 'formatoptions' 折行），格式化的入口仍是 <leader>lf。
-  function! s:lsp_native() abort
-    setlocal tagfunc=lsp#lsp#TagFunc
-    " K 用 <Cmd> 形式绑定：不改变模式、不产生额外的 :normal! 副作用
-    nnoremap <silent> <buffer> K <Cmd>LspHover<CR>
-  endfunction
+" 说明：原来这里的 syncInit: v:false 已删除 —— 插件里 syncInit 默认就是 false
+"（autoload/lsp/lsp.vim），而且只有 inlay hints 读它，写了等于没写。
+let s:servers = []
+let s:ra = s:exe('rust-analyzer', '/usr/lib/rustup/bin/rust-analyzer')
+if s:ra !=# ''
+  let s:w = s:with_nice(s:ra, [])
+  " ⚠ 不要给 rust-analyzer 传 workspaceConfig（2026-09-27 实测回退）：
+ " 试过 {'check': {'workspace': v:false}} 和 {'cachePriming': {'enable': v:false}}
+ " —— 想让服务器少干活、少卡前台。结果 A/B 三次复现：**任一个开关都会让
+ " rust-analyzer 不再发布诊断**（符号列 E> 60 秒不出现；什么都不传 1.8 秒就出）。
+ " 诊断是刚需，所以保持默认；「打开 rs 文件卡一下」改由状态栏进度提示解决
+ " （见第 6 节（ui.vim 部分）与文档第 10 节）。
+  call add(s:servers, #{
+        \ name: 'rust-analyzer',
+        \ filetype: ['rust'],
+        \ path: s:w.path,
+        \ args: s:w.args,
+        \ })
+endif
+let s:cd = s:exe('clangd', '/usr/bin/clangd')
+if s:cd !=# ''
+  let s:w = s:with_nice(s:cd, ['--background-index'])
+  call add(s:servers, #{
+        \ name: 'clangd',
+        \ filetype: ['c', 'cpp'],
+        \ path: s:w.path,
+        \ args: s:w.args,
+        \ })
+endif
+if !empty(s:servers)
+  let g:lsp_servers = s:servers
+endif
 
-  augroup ec_lsp_native
-    autocmd!
-    autocmd FileType rust,c,cpp call s:lsp_native()
-  augroup END
+" ---- 4.1) 把 Vim 的原生接口接到 LSP 上（比记 <leader>l* 更 Vim）----
+" 下面这些都是 Vim 自己的机制，接上之后手感就是「原生 Vim + 语言服务器」：
+" 'tagfunc' → C-] / g] / :tjump / :tag 跳定义
+" （definitionFallback 保持默认 false：这条路上没有 tags 文件工作流，
+" 打开它会让「没有 LSP 的 buffer 里按 <leader>ld」去 tjump，
+" 直接抛 E433: No tags file + E426: Tag not found）
+" K → LSP hover；没有内容时 hoverFallback 会让插件执行原生 K（man 等）
+"   'omnifunc' → 插件自己会给附加了服务器的 buffer 设 g:LspOmniFunc，即 <C-x><C-o>
+" （所以全局的 syntaxcomplete#Complete 已删，见第 5 节）
+" ⚠ 格式化**没有**接 gq / 'formatexpr'，这是实测结论（2026-09-27）：
+"   · 插件文档给的两条路是 setlocal formatexpr=lsp#lsp#FormatExpr() 和
+" nnoremap gq <Plug>(LspFormat)；
+"   · 前者走 CurbufGetServerChecked('documentRangeFormatting')，实测返回 1（=未格式化），
+" Vim 于是回退到内置 gq，等于什么都没做；
+"   · 后者走 DocRangeFormat，同样要 documentRangeFormatting，实测 rust-analyzer
+" 只提供 documentFormatting（BufLspServerGet 对 range 返回空），于是只打印
+" "Formatting unsupported; falling back to built-in."；
+"   · 只有不带范围的 :LspFormat 走 documentFormatting，实测可用（<leader>lf 就是它；
+" 另外保存时也会经 EcFmtSave → rustfmt 格式化）。
+" 结论：gq 保持 Vim 原生（只管按 'formatoptions' 折行），格式化的入口仍是 <leader>lf。
+function! s:lsp_native() abort
+  " 插件没装（例如 vim-plug 下载失败）时直接返回 —— 否则 tagfunc 会指向不存在的
+  " 函数，按 C-] 才报 E117，报错时机和原因都对不上（2026-09-28 修）。
+  if !exists('g:loaded_lsp') || !exists(':LspHover')
+    return
+  endif
+  setlocal tagfunc=lsp#lsp#TagFunc
+  " K 用 <Cmd> 形式绑定：不改变模式、不产生额外的 :normal! 副作用
+  nnoremap <silent> <buffer> K <Cmd>LspHover<CR>
+endfunction
+
+augroup ec_lsp_native
+  autocmd!
+  autocmd FileType rust,c,cpp call s:lsp_native()
+augroup END
 
   let g:which_key_hspace           = 2
   let g:which_key_use_floating_win = 1     " popup 浮窗，不挤动窗口布局
@@ -1990,23 +2280,23 @@ let g:lsp_options = {
 "   · 不要 space 规则（Emacs 不会往 {} 里塞空格）；
 "   · 不要 endwise 规则（Emacs 不会自动补 end）；
 "   · 保留 newline 规则 —— 在 {} () [] 里按 <CR> 展开成三行，
-"     这正是 Emacs electric-pair-mode + electric-indent-mode 的行为。
+" 这正是 Emacs electric-pair-mode + electric-indent-mode 的行为。
 "
 " ⚠ 三个坑（都踩过，见 ~/.vim/EMACS-VIM.md）：
 "   1) 必须用 g:loaded_lexima 判断 —— exists('*lexima#init') 对「尚未 autoload 的
-"      autoload 函数」返回 0，那样整段会被静默跳过，配对功能就完全没了。
+" autoload 函数」返回 0，那样整段会被静默跳过，配对功能就完全没了。
 "   2) 这里是脚本层（不在函数里），不能用 l: 作用域变量 ——
-"      `for l:rule in ...` 会抛 E461: Illegal variable name，循环体一行都不执行。
+" `for l:rule in ...` 会抛 E461: Illegal variable name，循环体一行都不执行。
 "   3) 别用 string(rule) 去匹配 —— 字典里 'char': '''' 的字符串表示是 ''''，
-"      本身就含三个连续单引号，会把「单引号配对」这条基础规则一起误删。
-"      所以下面逐个字段取值再判断。
+" 本身就含三个连续单引号，会把「单引号配对」这条基础规则一起误删。
+" 所以下面逐个字段取值再判断。
 function! s:lexima_keep(rule) abort
   for l:field in ['char', 'at', 'input', 'input_after']
     let l:val = get(a:rule, l:field, '')
     if type(l:val) != v:t_string
       continue
     endif
-    " 反引号；markdown 三引号 / 三单引号 —— Emacs 的 electric-pair-pairs 里都没有
+ " 反引号；markdown 三引号 / 三单引号 —— Emacs 的 electric-pair-pairs 里都没有
     if l:val =~# '`' || l:val =~# '"""' || l:val =~# "'''"
       return 0
     endif
@@ -2016,7 +2306,7 @@ endfunction
 
 " ---- 7) easymotion（对应 avy）----
 " 键位照 Emacs 的 SPC j 前缀，另开 SPC m（+motion）把其它跳法都放出来。
-" 装了 easymotion 时 <leader>j j/w/l 会覆盖 conf/60-keymaps.vim 里的内置兜底。
+" 装了 easymotion 时 <leader>j j/w/l 会覆盖第 8 节 里的内置兜底。
 "
 " ⚠ 为什么不用 nmap 直接绑 <Plug>：实测经 <leader> 前缀（会先进 which-key 的
 "   输入循环）执行时，需要后续输入的目标不可靠 —— 按键会被 which-key 的
@@ -2034,14 +2324,14 @@ endfunction
 
 " ---- 8) dirvish（对应 Emacs 的 dirvish）----
 " 只补 Emacs 那边 dirvish-mode-map 里常用的几个键：
-"   Emacs: q = dirvish-quit       -> q
-"   Emacs: h = dired-up-directory -> -（插件自带，见 ~/.vim/plugins.vim）
-"   Emacs: l / 回车 = 打开        -> 回车（插件自带）
-"   Emacs: g d = 跳到任意路径     -> g d
+" Emacs: q = dirvish-quit -> q
+"   Emacs: h = dired-up-directory -> -（插件自带，见 本文件第 9 节）
+" Emacs: l / 回车 = 打开 -> 回车（插件自带）
+" Emacs: g d = 跳到任意路径 -> g d
   function! s:dirvish_maps() abort
     nnoremap <silent> <buffer> q <Plug>(dirvish_quit)
     nnoremap <silent> <buffer> gd :<C-u>Dirvish <C-r>=fnameescape(input('目录: ', '', 'dir'))<CR><CR>
-    " <C-^>：在原文件和目录之间来回切（dirvish 保留了 alternate buffer）
+ " <C-^>：在原文件和目录之间来回切（dirvish 保留了 alternate buffer）
     nnoremap <silent> <buffer> <C-^> <C-^>
   endfunction
 
@@ -2062,29 +2352,29 @@ if exists('g:loaded_floaterm') || !empty(globpath(&runtimepath, 'plugin/floaterm
   augroup END
 
   function! s:floaterm_maps() abort
-    " 终端-普通模式里按 q：关掉这个浮窗，**连同终端进程**（和 dirvish 的 q 一个约定）
+ " 终端-普通模式里按 q：关掉这个浮窗，**连同终端进程**（和 dirvish 的 q 一个约定）
     nnoremap <silent> <buffer> q :<C-u>FloatermKill<CR>
-    "
-    " 终端-普通模式里按 <Esc>：收起浮窗，**保留终端进程**。
-    " 配合下面的 tnoremap 就是「连按两次 <Esc> 收起终端」：
-    "   第 1 次 <Esc>：Terminal-Job -> 终端-普通模式（tnoremap 那条）
-    "   第 2 次 <Esc>：收起浮窗（这条）；下次 SPC e t 还是同一个 shell
-    " 为什么收起不会丢进程：floaterm 的 hide 只是 popup_close()，而 conf/10-basic.vim
-    " 里有 set hidden，终端 buffer 不会被卸载、job 继续跑（实测收起/呼出多次，fish 的
-    " PID 一直不变）。想连进程一起结束：终端-普通模式按 q，或 SPC e k / SPC e K。
+ "
+ " 终端-普通模式里按 <Esc>：收起浮窗，**保留终端进程**。
+ " 配合下面的 tnoremap 就是「连按两次 <Esc> 收起终端」：
+ " 第 1 次 <Esc>：Terminal-Job -> 终端-普通模式（tnoremap 那条）
+ " 第 2 次 <Esc>：收起浮窗（这条）；下次 SPC e t 还是同一个 shell
+ " 为什么收起不会丢进程：floaterm 的 hide 只是 popup_close()，而第 2 节
+ " 里有 set hidden，终端 buffer 不会被卸载、job 继续跑（实测收起/呼出多次，fish 的
+ " PID 一直不变）。想连进程一起结束：终端-普通模式按 q，或 SPC e k / SPC e K。
     nnoremap <silent> <buffer> <Esc> :<C-u>FloatermHide<CR>
-    "
-    " 终端-输入模式（Terminal-Job）里按 <Esc>：回到终端-普通模式。
-    " 为什么要这个映射：在 Terminal-Job 模式下**所有按键都直接发给 shell**，
-    " 连 leader（<Space>）也只会打出一个空格 —— 所以「在终端里没法用 leader 键」。
-    " Vim 自带的逃逸是 <C-\><C-n> 四个键，太别扭；绑成 <Esc> 之后：
-    "   <Esc>          -> 回到普通模式，leader 全部可用（SPC e k 关浮窗等）
-    "   <Esc> <Esc>    -> 收起浮窗（进程保留，再 SPC e t 还是这个 shell）
-    "   i / a / A      -> 继续往 shell 里打字
-    "   q              -> 关掉浮窗（进程一起结束）
-    " 如果浮窗里跑的是自己要用 <Esc> 的 TUI 程序（嵌套 vim / hx / lazygit …），
-    " 在 ~/.vim/plugins.vim 里设 let g:ec_floaterm_esc = 0 关掉这条映射，
-    " 那样就仍用 Vim 自带的 <C-\><C-n> 离开终端模式。
+ "
+ " 终端-输入模式（Terminal-Job）里按 <Esc>：回到终端-普通模式。
+ " 为什么要这个映射：在 Terminal-Job 模式下**所有按键都直接发给 shell**，
+ " 连 leader（<Space>）也只会打出一个空格 —— 所以「在终端里没法用 leader 键」。
+ " Vim 自带的逃逸是 <C-\><C-n> 四个键，太别扭；绑成 <Esc> 之后：
+ " <Esc> -> 回到普通模式，leader 全部可用（SPC e k 关浮窗等）
+ " <Esc> <Esc> -> 收起浮窗（进程保留，再 SPC e t 还是这个 shell）
+ " i / a / A -> 继续往 shell 里打字
+ " q -> 关掉浮窗（进程一起结束）
+ " 如果浮窗里跑的是自己要用 <Esc> 的 TUI 程序（嵌套 vim / hx / lazygit …），
+ " 在 本文件第 9 节里设 let g:ec_floaterm_esc = 0 关掉这条映射，
+ " 那样就仍用 Vim 自带的 <C-\><C-n> 离开终端模式。
     if get(g:, 'ec_floaterm_esc', 1)
       tnoremap <silent> <buffer> <Esc> <C-\><C-n>
     endif
@@ -2099,7 +2389,7 @@ function! EcPluginIntegrate() abort
 call EcReassertMappings()
 " ---- 1) 注释：gcc / gc{motion} / 可视 gc 就是 vim-commentary 的原生映射 ----
 " <leader>c 只是同一个操作的 leader 别名（which-key 里能看到，可选）。
-" 取消搜索高亮原来占用 gc，现在交给 Vim 自带的 nohlsearch 包（conf/30-search.vim）。
+" 取消搜索高亮原来占用 gc，现在交给 Vim 自带的 nohlsearch 包（第 4 节）。
 if !empty(maparg('<Plug>CommentaryLine', 'n'))
   nmap <silent> <leader>c <Plug>CommentaryLine
 endif
@@ -2122,12 +2412,12 @@ endif
 " ---- 5) which-key（对应 Emacs 的 which-key）----
 " ⚠ 两个必须注意的点（都踩过，见 ~/.vim/EMACS-VIM.md 第 4 节）：
 "   1) 描述「前缀键」（f / b / w / s …）必须用 { 'name': '+xxx' }，写成字符串会走到
-"      which-key 内部 s:merge 的 native[k][0]，抛
-"      E716: Key not present in Dictionary: "0" 并把菜单搞坏。叶子键才用字符串。
+" which-key 内部 s:merge 的 native[k][0]，抛
+" E716: Key not present in Dictionary: "0" 并把菜单搞坏。叶子键才用字符串。
 "   2) g:which_key_timeout 要设 0，否则按 <Space> 后要等
-"      Vim 的 timeoutlen(400ms) + which-key 默认的 1000ms。
-" 这里的每一项都必须在 conf/60-keymaps.vim 或本文件里有对应的真实映射
-"（~/vim-recon/wk_audit.py 会双向核对，防止菜单与实际键位脱节）。
+" Vim 的 timeoutlen(400ms) + which-key 默认的 1000ms。
+" 这里的每一项都必须在第 8 节或本文件里有对应的真实映射
+"（~/vim-recon/lint_single.sh 会双向核对，防止菜单与实际键位脱节）。
 if exists(":WhichKey")
 
   call which_key#register('<Space>', 'g:which_key_map')
@@ -2145,14 +2435,35 @@ if exists('g:loaded_lexima')
     call lexima#add_rule(s:rule)
     let s:lexima_n += 1
   endfor
-  let g:ec_lexima_rules = s:lexima_n      " 供自检（~/vim-recon/lint.sh）读取
+  let g:ec_lexima_rules = s:lexima_n      " 供自检（~/vim-recon/lint_single.sh）读取
   unlet! s:rule
+
+  " <CR>：括号对之间回车 → 展开三行 + 自动缩进（"在 {} () [] 里换行自动缩进"）。
+  " 为什么不用 lexima 的 newline 规则：实测 lexima#expand('<CR>','i') 在我们这套配置下
+  " 只返回一个换行（规则没匹配上），所以这里自己判断——
+  " 逻辑很小、行为可预期，也不再受插件映射影响。
+  function! EcBracketCr() abort
+    let l:line = getline('.')
+    let l:c = col('.') - 1                       " 光标前的字节索引
+    if l:c <= 0 || l:c >= len(l:line)
+      return "\<CR>"
+    endif
+    let l:pairs = {'(': ')', '[': ']', '{': '}'}
+    let l:prev = l:line[l:c - 1]
+    if !has_key(l:pairs, l:prev) || l:pairs[l:prev] !=# l:line[l:c]
+      return "\<CR>"                            " 不是「光标正好夹在一对括号中间」→ 原样回车
+    endif
+    " 三行展开：<CR> 先把闭括号推到下一行（indentexpr 会给它正确缩进），
+    " 再用 <C-o>O 在这一行上方开一行 —— 该行按 indentexpr 得到「比开括号行多一级」的缩进。
+    return "\<CR>\<C-o>O"
+  endfunction
+  inoremap <expr> <CR> pumvisible() ? "\<C-y>" : EcBracketCr()
 endif
 if !empty(maparg('<Plug>(easymotion-bd-w)', 'n'))
   " [leader 键, easymotion 动作名]
   " ⚠ 续行的 List 字面量里不能写行尾 " 注释（会抛 E696: Missing comma in List）。
-  "   SPC j j = avy-goto-char-timer   SPC j w = avy-goto-word-1
-  "   SPC j l = avy-goto-line         SPC m * = easymotion 的其它跳法
+ " SPC j j = avy-goto-char-timer SPC j w = avy-goto-word-1
+ " SPC j l = avy-goto-line SPC m * = easymotion 的其它跳法
   let s:em = [
         \ ['jj', 'bd-f'],
         \ ['jw', 'bd-w'],
@@ -2183,12 +2494,14 @@ endif
 "   SPC n r（普通模式）= 把当前段落摘出去
 " 窄窗里 :WidenRegion 同步回原 buffer 并关闭，直接 :w 也行。
 if !empty(maparg('<Plug>NrrwrgnDo', 'n'))
-  xnoremap <silent> <leader>nr :<C-u>call nrrwrgn#NrrwRgn(visualmode(), '')<CR>
-  nnoremap <silent> <leader>nr :<C-u>normal! vip<CR>:<C-u>call nrrwrgn#NrrwRgn(visualmode(), '')<CR>
+  " 用插件自带命令：:NRV 内部就是调 nrrwrgn#NrrwRgn(visualmode(), '')，
+  " :NR 自带 '<,'> 范围 —— 不必自己调内部函数，也不依赖 normal! vip 之后的时序。
+  xnoremap <silent> <leader>nr :NRV<CR>
+  nnoremap <silent> <leader>nr :<C-u>normal! vip<CR>:NR<CR>
 endif
 endfunction
 
 augroup ec_plugin_integrate
   autocmd!
-  autocmd VimEnter * call EcPluginIntegrate()
+  autocmd VimEnter * call EcPluginIntegrate() | call EcEnsureLspPatch()
 augroup END
