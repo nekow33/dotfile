@@ -17,8 +17,8 @@
 " · 配色原来在 colors/doom-tomorrow-night.vim，已内联到第 3 节。
 " ⚠ 代价：:colorscheme 不再可用，改配色直接改第 3 节那一段。
 "
-"  备份：合并前的分层配置在 ~/vim-recon/config-single-file-20260928-202150/
-"  对照说明与踩坑记录：~/.vim/EMACS-VIM.md
+"  ⚠ ~/vim-recon/（合并前备份、lsp-async-pull.patch、lint_single.sh）与
+"     ~/.vim/EMACS-VIM.md 都已不存在；踩坑经验已内联到下面各段的 ⚠ 注释里。
 "
 "  2026-10-25 优化（每处细节见对应位置的 ⚠ 注释）：
 "   · 修：状态栏的诊断数从来没显示过 —— Vim 不会再解析 %{...} 返回值里的 %#组#，
@@ -240,6 +240,8 @@ call s:hi('EcFileType',    'cyan', 'bg_alt','')
 call s:hi('EcPosition',    'yellow','bg_alt','')
 call s:hi('EcPercent',     'grey', 'bg_alt','')
 call s:hi('EcEncoding',    'base5','bg_alt','')
+" 输入法状态（对应状态栏里的 [ㄓ]中|半|接）
+call s:hi('EcImState',     'violet','bg_alt','bold')
 " avy 风格的跳转标签（对应 avy 的候选高亮）
 " ---- 浮窗 / 弹出菜单边框（which-key、补全菜单用）----
 call s:hi('NormalFloat',      'fg',   'bg_alt','')
@@ -311,7 +313,7 @@ call s:hi('fugitiveHeading','violet','',   'bold')
 "   LspDiagBorder* 等 50 个），Vim 这边没有任何插件引用，等于白写；
 "   而插件真正要用的 LspDiagInline* / LspDiagVirtualTextWarning 反而没有定义，
 "   于是出错代码段的 undercurl 退回 SpellBad、警告的虚拟文字退回 SpellCap。
-"   现在按插件源码逐个对齐（见 ~/.vim/EMACS-VIM.md 第 7.7 节）。
+"   现在按插件源码逐个对齐（原 ~/.vim/EMACS-VIM.md 第 7.7 节，该文件已删除）。
 " 符号列里的 E> / W> / I> / H>
 call s:hi('LspDiagSignErrorText',   'red',   'bg', '')
 call s:hi('LspDiagSignWarningText', 'yellow','bg', '')
@@ -1430,6 +1432,15 @@ function! EcUiStatusline() abort
   " 分组由 EcUiDiag() 自己带（E/W 颜色不同），这里不要再套一层。
   let l:s .= EcUiDiag()
   let l:s .= '%#EcLspProgress#' . EcUiProgress()
+  " 输入法状态：[ㄓ]中|半|接 —— 没启动时 IM_Status() 返回空串，直接跳过。
+  " ⚠ 同 EcUiDiag() 那条注释：必须直接拼接，不能用 %{IM_Status()}，
+  "   否则返回值里的 %#组# 不会被二次解析。
+  if exists('*IM_Status')
+    let l:ims = IM_Status()
+    if l:ims !=# ''
+      let l:s .= '%#EcImState#' . l:ims
+    endif
+  endif
   let l:s .= '%='                                  " 以下右对齐
   let l:s .= '%#EcFileType# %{&filetype ==# "" ? "text" : &filetype} '
   let l:s .= '%#EcEncoding#%{&fenc ==# "" ? &enc : &fenc} '
@@ -1754,14 +1765,6 @@ endif
 call mkdir(expand('~/.vim/undo'), 'p')
 call mkdir(expand('~/.vim/fzf-history'), 'p')
 
-" 文档副本在 ~/vim-recon/EMACS-VIM.md，~/.vim 被删后自动恢复
-if !filereadable(expand('~/.vim/EMACS-VIM.md'))
-      \ && filereadable(expand('~/vim-recon/EMACS-VIM.md'))
-  call writefile(readfile(expand('~/vim-recon/EMACS-VIM.md')),
-        \ expand('~/.vim/EMACS-VIM.md'))
-  echomsg '已从 ~/vim-recon/EMACS-VIM.md 恢复文档'
-endif
-
 if empty(glob(s:plug_vim))
   echomsg '未找到 vim-plug，已跳过插件层（本文件的内置功能仍然可用）'
 else
@@ -1924,55 +1927,30 @@ let g:floaterm_keymap_new    = '<F9>'
 let g:ec_floaterm_esc = get(g:, 'ec_floaterm_esc', 1)
 
 " ============================================================ 插件清单 ======
-" --- 自举 2/2：插件目录缺失时自动安装；装完把本地补丁打回去并重新加载配置 ---
+" --- 自举 2/2：插件目录缺失时自动安装；装完重新加载配置 ---
 " （首次启动、或 ~/.vim/plugged 被删掉之后会自动走到这里）
-" LSP 补丁自愈：:PlugUpdate 会把打过补丁的文件换成上游新版，补丁就丢了。
-" 快路径只读一个文件找标记（约 1ms，不影响启动），只有真丢了才去跑 git apply。
-" 补丁是在 Vim 启动后才打上的，所以要重启 Vim 才生效 —— 这里会明确提示。
-function! EcEnsureLspPatch() abort
-  let l:f = expand('~/.vim/plugged/lsp/autoload/lsp/lspserver.vim')
-  let l:patch = expand('~/vim-recon/lsp-async-pull.patch')
-  if !filereadable(l:f) || !filereadable(l:patch)
-    return
-  endif
-  for l:line in readfile(l:f, '', 4000)
-    if l:line =~# 'PullDiagReplyCb'
- " 补丁在，什么都不做
-      return
-    endif
-  endfor
-  let l:r = system('cd ' . shellescape(expand('~/.vim/plugged/lsp'))
-        \ . ' && git apply ' . shellescape(l:patch) . ' 2>&1')
-  if v:shell_error == 0
-    echomsg 'LSP 异步补丁已重新应用（下次启动 Vim 生效）'
-  else
-    echomsg 'LSP 补丁应用失败：' . substitute(l:r, '\n', ' ', 'g')
-  endif
-endfunction
 
-function! EcReapplyLocalPatches() abort
-  " yegappan/lsp：把「拉诊断改成异步」的本地 patch 打回去
-  " （插件是 git clone 来的，重新安装后补丁没了，这里自动重放）
-  let l:patch = expand('~/vim-recon/lsp-async-pull.patch')
-  let l:plugd = expand('~/.vim/plugged/lsp')
-  if !filereadable(l:patch) || !isdirectory(l:plugd)
-    return
-  endif
-  " 已经打过（补丁能反向应用）就跳过
-  call system('cd ' . shellescape(l:plugd) . ' && git apply --check --reverse '
-        \ . shellescape(l:patch) . ' >/dev/null 2>&1')
-  if v:shell_error == 0
-    return
-  endif
-  let l:r = system('cd ' . shellescape(l:plugd) . ' && git apply '
-        \ . shellescape(l:patch) . ' 2>&1')
-  if v:shell_error == 0
-    echomsg '已重放 LSP 异步 patch'
-  else
-    echomsg 'LSP patch 应用失败：' . substitute(l:r, '\n', ' ', 'g')
-  endif
-endfunction
-
+" --------------------------------------------------------------- 输入法 ----
+" rime.vim：**必须早于 plug#begin**。插件的 im#rime#init() 在加载时就把下面
+" 这几个 g: 变量写进 $RIME_USER_DATA_DIR / $RIME_SHARED_DATA_DIR，整场会话
+" 不再重读（见 plugged/rime.vim/plugin/im_nvim.vim:29 → autoload/im/rime.vim:236）。
+" 原先写在文件末尾，只因值恰好等于插件默认值才没暴露问题；一旦把数据目录
+" 改到别处就会静默不生效，而且 :IMDeploy 也救不回来。
+let g:im_user_data_dir   = expand('~/.local/share/rime-ice')
+let g:im_shared_data_dir = '/usr/share/rime-data'
+" rime-query 后端：它不在 PATH 里，所以给显式路径。这就是 im#rime#init() 自己
+" 会回退到的同一个位置，重编译后路径不变即可继续用。
+let g:im_rime_bin        = expand('~/.vim/plugged/rime.vim/cpp/build/rime-query')
+" 候选窗高度：对齐本文件里 set pumheight=10 那一条。插件在输入法启动期间会把它
+" 强制设成这个值（默认 9），:IMStop 之后还原。
+let g:im_pumheight       = 10
+" daemon 空闲不退出：默认 60000ms 后自退（日志里能看到 "idle for 60005 ms ... bye"），
+" 频繁开关 vim 就要反复重连。设 0 = 常驻（仍然可以用 :IMShutdown 手动关掉）。
+let g:im_idle_exit_ms    = 0
+" 状态栏的 L/I 改成中文：接 = Rime 接管（原 L），直 = 原生直通（原 I）。
+" 于是状态栏显示 [ㄓ]中|半|接 ；运行时可 :echo IM_Status() 查看。
+let g:im_status_lmap_text = '接'
+let g:im_status_imap_text = '直'
 call plug#begin('~/.vim/plugged')
 
 Plug 'junegunn/fzf'          " 系统已装 fzf 可执行文件，无需 do 钩子
@@ -1992,6 +1970,7 @@ Plug 'easymotion/vim-easymotion'
 Plug 'justinmk/vim-dirvish'
 Plug 'chrisbra/NrrwRgn'
 Plug 'voldikss/vim-floaterm'
+Plug 'TSalmon3/rime.vim'
 
 call plug#end()
 
@@ -2034,8 +2013,6 @@ call plug#end()
     else
       echomsg '这些插件没装成功：' . join(s:fail, ', ') . '（检查网络 / git）'
     endif
- " 新克隆下来的 lsp 是干净的，把我们本地的异步 patch 打回去
-    call EcReapplyLocalPatches()
   endif
 endif
 
@@ -2147,14 +2124,20 @@ let g:lsp_options = {
 " nice 只改调度优先级、不影响任何 LSP 功能；g:ec_lsp_nice = 0 可关掉。
 "
 " 实现方式：插件是拿 [path] + args 直接 job_start 的，所以把 path 换成 nice、
-" 把真正的服务器路径放到 args 末尾即可。注意插件会检查 server.path 是否
+" 实现方式：插件是拿 [path] + args 直接 job_start 的，所以把 path 换成 nice，
+" 真正的服务器路径放在 nice 自己的选项之后、服务器参数之前：
+"   nice -n 10 <服务器路径> <服务器自己的参数>
+" ⚠ 以前写成了「nice -n 10 <服务器参数> <服务器路径>」：rust-analyzer 没有自己的
+" 参数所以没暴露；clangd 的 --background-index 会被 nice 当成它自己的选项，
+" 直接 unrecognized option 退出，C/C++ 补全因此一直不工作（2026-11-08 修）。
+" 注意插件会检查 server.path 是否可执行，且本机的 nice 在 /usr/sbin/nice（不在 /usr/bin）。
 " 可执行，而且本机的 nice 在 /usr/sbin/nice（不在 /usr/bin）。
 " 副作用：:LspShowAllServers 里显示的 Server Path 会是 nice 的路径。
 function! s:with_nice(path, args) abort
   let l:n = get(g:, 'ec_lsp_nice', 10)
   if l:n > 0 && executable('/usr/sbin/nice')
     return #{ path: '/usr/sbin/nice',
-          \   args: ['-n', string(l:n)] + a:args + [a:path] }
+          \   args: ['-n', string(l:n), a:path] + a:args }
   endif
   return #{ path: a:path, args: a:args }
 endfunction
@@ -2282,7 +2265,7 @@ augroup END
 "   · 保留 newline 规则 —— 在 {} () [] 里按 <CR> 展开成三行，
 " 这正是 Emacs electric-pair-mode + electric-indent-mode 的行为。
 "
-" ⚠ 三个坑（都踩过，见 ~/.vim/EMACS-VIM.md）：
+" ⚠ 三个坑（都踩过）：
 "   1) 必须用 g:loaded_lexima 判断 —— exists('*lexima#init') 对「尚未 autoload 的
 " autoload 函数」返回 0，那样整段会被静默跳过，配对功能就完全没了。
 "   2) 这里是脚本层（不在函数里），不能用 l: 作用域变量 ——
@@ -2360,7 +2343,7 @@ if exists('g:loaded_floaterm') || !empty(globpath(&runtimepath, 'plugin/floaterm
  " 第 1 次 <Esc>：Terminal-Job -> 终端-普通模式（tnoremap 那条）
  " 第 2 次 <Esc>：收起浮窗（这条）；下次 SPC e t 还是同一个 shell
  " 为什么收起不会丢进程：floaterm 的 hide 只是 popup_close()，而第 2 节
- " 里有 set hidden，终端 buffer 不会被卸载、job 继续跑（实测收起/呼出多次，fish 的
+ " 里有 set hidden，终端 buffer 不会被卸载、job 继续跑（实测收起/呼出多次，shell 的
  " PID 一直不变）。想连进程一起结束：终端-普通模式按 q，或 SPC e k / SPC e K。
     nnoremap <silent> <buffer> <Esc> :<C-u>FloatermHide<CR>
  "
@@ -2380,6 +2363,10 @@ if exists('g:loaded_floaterm') || !empty(globpath(&runtimepath, 'plugin/floaterm
     endif
   endfunction
 endif
+
+" 输入法（rime.vim）的配置不在这里：插件加载时就读那几个 g: 变量
+" （im#rime#init() 只跑一次），所以它们必须写在 plug#begin 之前，
+" 见本文件前面「输入法」那一段。写在本位置是无效的。
 
 " ------------------------------------------------------------- 顶层之后运行 --
 " 下面这些必须等插件加载完才能做（读 <Plug> 映射、调用插件函数），
@@ -2410,14 +2397,14 @@ if !empty(maparg('<Plug>(expand_region_expand)', 'x'))
   xmap <silent> <leader>xX <Plug>(expand_region_shrink)
 endif
 " ---- 5) which-key（对应 Emacs 的 which-key）----
-" ⚠ 两个必须注意的点（都踩过，见 ~/.vim/EMACS-VIM.md 第 4 节）：
+" ⚠ 两个必须注意的点（都踩过）：
 "   1) 描述「前缀键」（f / b / w / s …）必须用 { 'name': '+xxx' }，写成字符串会走到
 " which-key 内部 s:merge 的 native[k][0]，抛
 " E716: Key not present in Dictionary: "0" 并把菜单搞坏。叶子键才用字符串。
 "   2) g:which_key_timeout 要设 0，否则按 <Space> 后要等
 " Vim 的 timeoutlen(400ms) + which-key 默认的 1000ms。
 " 这里的每一项都必须在第 8 节或本文件里有对应的真实映射
-"（~/vim-recon/lint_single.sh 会双向核对，防止菜单与实际键位脱节）。
+"（原有个 lint 脚本会双向核对菜单与实际键位；脚本已删除，现在靠人工保持一致）。
 if exists(":WhichKey")
 
   call which_key#register('<Space>', 'g:which_key_map')
@@ -2427,15 +2414,12 @@ endif
 if exists('g:loaded_lexima')
   call lexima#init()          " 触发 autoload，拿到 g:lexima#default_rules
   call lexima#clear_rules()
-  let s:lexima_n = 0
   for s:rule in g:lexima#default_rules + g:lexima#newline_rules
     if !s:lexima_keep(s:rule)
       continue
     endif
     call lexima#add_rule(s:rule)
-    let s:lexima_n += 1
   endfor
-  let g:ec_lexima_rules = s:lexima_n      " 供自检（~/vim-recon/lint_single.sh）读取
   unlet! s:rule
 
   " <CR>：括号对之间回车 → 展开三行 + 自动缩进（"在 {} () [] 里换行自动缩进"）。
@@ -2444,13 +2428,22 @@ if exists('g:loaded_lexima')
   " 逻辑很小、行为可预期，也不再受插件映射影响。
   function! EcBracketCr() abort
     let l:line = getline('.')
-    let l:c = col('.') - 1                       " 光标前的字节索引
-    if l:c <= 0 || l:c >= len(l:line)
+    let l:b = col('.') - 1                       " 光标前的字节索引
+    if l:b <= 0 || l:b >= len(l:line)
       return "\<CR>"
     endif
-    let l:pairs = {'(': ')', '[': ']', '{': '}'}
-    let l:prev = l:line[l:c - 1]
-    if !has_key(l:pairs, l:prev) || l:pairs[l:prev] !=# l:line[l:c]
+    " 必须按「字符」取前后各一个字符：Vim 的 str[i] 是按字节取的（实测
+    " '（）'[0] 只得到 <ef>），而全角括号占 3 字节，按字节比较永远匹配不上。
+    let l:c = charidx(l:line, l:b)                " 字节索引 → 字符索引
+    if l:c <= 0 || l:c >= strchars(l:line)
+      return "\<CR>"
+    endif
+    " 半角 + 全角两套：中文态下标点默认全角，rime 会把 ( [ { 打成 （ ［ ｛
+    let l:pairs = {'(': ')', '[': ']', '{': '}',
+          \ '（': '）', '［': '］', '｛': '｝'}
+    let l:prev = strcharpart(l:line, l:c - 1, 1)
+    let l:next = strcharpart(l:line, l:c, 1)
+    if !has_key(l:pairs, l:prev) || l:pairs[l:prev] !=# l:next
       return "\<CR>"                            " 不是「光标正好夹在一对括号中间」→ 原样回车
     endif
     " 三行展开：<CR> 先把闭括号推到下一行（indentexpr 会给它正确缩进），
@@ -2458,7 +2451,44 @@ if exists('g:loaded_lexima')
     return "\<CR>\<C-o>O"
   endfunction
   inoremap <expr> <CR> pumvisible() ? "\<C-y>" : EcBracketCr()
+  " ---- rime.vim 抢走了 <CR>：输入法接管（状态栏 接）时，{} () [] 里回车不再三行展开 ----
+  " 原因：插件 im#keymap#setup() 给每个键（含 <CR>）装了 buffer-local 的
+  "   lnoremap <buffer><expr> <CR> im#keymap#cr()
+  " 而 iminsert=1 时 lmap 优先于 inoremap，于是上面那条 <CR> 映射轮不到执行，
+  " <CR> 只是个裸换行。它每次进插入模式都会重装，所以不能在外层改一次，
+  " 只能挂插件 setup 末尾的 User RimeKeymapSetup 钩子，把 lmap 换成分派器：
+  "   拼字中 / 候选菜单可见 → 保持插件行为（上屏、接受候选）
+  "   其余情况        → 回到括号三行展开（EcBracketCr）
+  " ⚠ 这里不能写 "autocmd User RimeKeymapSetup * ..."：那个 * 会被当成行范围，
+  "   抛 E16（同一个坑见本文件里讲「User 事件语法」那段）。
+  function! EcImCr() abort
+    if im#state#composing()
+      return im#keymap#cr()
+    endif
+    if pumvisible()
+      return "\<C-y>"
+    endif
+    return EcBracketCr()
+  endfunction
+  augroup ec_im_cr
+    autocmd!
+    autocmd User RimeKeymapSetup lnoremap <buffer><expr> <CR> EcImCr()
+  augroup END
 endif
+  " ---- 6.6) 保住 completeopt：插件 ready 后会把它压成 menuone,noinsert ----
+  " rime.vim 的 im#opt#use_im()（autoload/im/opt.vim:10）在 daemon 连上时执行
+  "   set completeopt=menuone,noinsert
+  " 于是丢掉 noselect / fuzzy / popup：候选首项被预选（<C-n> 起点后移一位）、
+  " 无字面匹配时不再模糊兜底、附加信息不再用 popup 显示。
+  " 它自己会用 im#opt#save() 存原值、:IMStop 时还原，所以只要在它之后再设回去。
+  " 顺序有保证：插件的 autocmd 在 plug#end() 时注册，我们这条到 VimEnter 才注册，
+  " 同事件按注册顺序执行，我们排后面。
+  " 想回到插件的保守设置：删掉上面那行 let 和下面整个 augroup 即可。
+  let g:ec_completeopt = &g:completeopt
+  augroup ec_im_completeopt
+    autocmd!
+    autocmd User RimeIMReady let &g:completeopt = g:ec_completeopt
+  augroup END
 if !empty(maparg('<Plug>(easymotion-bd-w)', 'n'))
   " [leader 键, easymotion 动作名]
   " ⚠ 续行的 List 字面量里不能写行尾 " 注释（会抛 E696: Missing comma in List）。
@@ -2503,5 +2533,5 @@ endfunction
 
 augroup ec_plugin_integrate
   autocmd!
-  autocmd VimEnter * call EcPluginIntegrate() | call EcEnsureLspPatch()
+  autocmd VimEnter * call EcPluginIntegrate()
 augroup END
